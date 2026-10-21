@@ -2,17 +2,20 @@ package database
 
 import (
 	"fmt"
+	"letterbox/internal/repositories"
 
 	"github.com/jmoiron/sqlx"
 )
 
 type Database struct {
-	DB *sqlx.DB
+	DB             *sqlx.DB
+	AuthRepository repositories.AuthRepository
 }
 
 func NewDatabase(db *sqlx.DB) *Database {
 	return &Database{
-		DB: db,
+		DB:             db,
+		AuthRepository: repositories.NewAuthRepository(db),
 	}
 }
 
