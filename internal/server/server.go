@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"letterbox/internal/middleware"
 	"letterbox/internal/router"
 	"log"
 	"net/http"
@@ -31,7 +32,8 @@ func NewServer(port string, router router.Router) *Server {
 }
 
 func (s *Server) Initialize() error {
-	s.httpServer.Handler = s.router.SetupRoutes()
+	rateLimiter := middleware.NewRateLimiter(100, time.Minute)
+	s.httpServer.Handler = rateLimiter.Middleware(s.router.SetupRoutes())
 
 	log.Printf("Server starting on %s", s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
