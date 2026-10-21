@@ -17,7 +17,7 @@ $$;
 `
 
 	CreateUsersTable = `
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username            citext      NOT NULL UNIQUE
                         CHECK (username ~ '^[A-Za-z0-9_]{3,30}$'),
@@ -40,7 +40,7 @@ CREATE TRIGGER users_set_updated_at
 
 	// Session cookie holds a random token; only its SHA-256 hash is stored here.
 	CreateSessionsTable = `
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id           bytea       PRIMARY KEY CHECK (octet_length(id) = 32),
     user_id      bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at   timestamptz NOT NULL DEFAULT now(),
@@ -62,7 +62,7 @@ CREATE INDEX sessions_expires_at_idx ON sessions (expires_at);
 
 	// Local cache of TMDB data; TMDB remains the source of truth.
 	CreateMoviesTable = `
-CREATE TABLE movies (
+CREATE TABLE IF NOT EXISTS movies (
     tmdb_id      integer     PRIMARY KEY,
     title        text        NOT NULL,
     poster_path  text,
@@ -72,7 +72,7 @@ CREATE TABLE movies (
 `
 
 	CreateReviewsTable = `
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id           bigint      NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
     movie_id          integer     NOT NULL REFERENCES movies(tmdb_id) ON DELETE RESTRICT,
@@ -101,7 +101,7 @@ CREATE TRIGGER reviews_set_updated_at
 
 	// A NULL parent_comment_id is a review comment; the composite FK keeps replies on the same review.
 	CreateCommentsTable = `
-CREATE TABLE comments (
+CREATE TABLE IF NOT EXISTS comments (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     review_id         bigint      NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
     parent_comment_id bigint,
@@ -135,7 +135,7 @@ CREATE TRIGGER comments_set_updated_at
 `
 
 	CreateReviewReactionsTable = `
-CREATE TABLE review_reactions (
+CREATE TABLE IF NOT EXISTS review_reactions (
     user_id    bigint      NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
     review_id  bigint      NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
     value      smallint    NOT NULL CHECK (value IN (-1, 1)),
@@ -149,7 +149,7 @@ CREATE INDEX review_reactions_review_idx ON review_reactions (review_id);
 `
 
 	CreateCommentReactionsTable = `
-CREATE TABLE comment_reactions (
+CREATE TABLE IF NOT EXISTS comment_reactions (
     user_id    bigint      NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
     comment_id bigint      NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     value      smallint    NOT NULL CHECK (value IN (-1, 1)),
@@ -163,7 +163,7 @@ CREATE INDEX comment_reactions_comment_idx ON comment_reactions (comment_id);
 `
 
 	CreateFollowsTable = `
-CREATE TABLE follows (
+CREATE TABLE IF NOT EXISTS follows (
     follower_id bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     followed_id bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at  timestamptz NOT NULL DEFAULT now(),
@@ -177,7 +177,7 @@ CREATE INDEX follows_followed_idx ON follows (followed_id);
 `
 
 	CreateBlocksTable = `
-CREATE TABLE blocks (
+CREATE TABLE IF NOT EXISTS blocks (
     blocker_id bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     blocked_id bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at timestamptz NOT NULL DEFAULT now(),
