@@ -15,6 +15,7 @@ type AuthRepository interface {
 	CreateUser(ctx context.Context, user *domains.User) (int64, error)
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	CreateSession(ctx context.Context, session *domains.Session) error
+	GetSessionByID(ctx context.Context, sessionID string) (*domains.Session, error)
 	DeleteExpiredSessions(ctx context.Context) error
 }
 
@@ -26,6 +27,7 @@ var (
 	ErrUsernameAlreadyExists = errors.New("username already exists")
 	ErrEmailAlreadyExists    = errors.New("email already exists")
 	ErrUserNotFound          = errors.New("user not found")
+	ErrSessionNotFound       = errors.New("session not found")
 )
 
 func NewAuthRepository(db *sqlx.DB) AuthRepository {
@@ -73,4 +75,16 @@ func (r *authRepository) CreateSession(ctx context.Context, session *domains.Ses
 func (r *authRepository) DeleteExpiredSessions(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= NOW()`)
 	return err
+}
+
+func (r *authRepository) GetSessionByID(ctx context.Context, sessionID string) (*domains.Session, error) {
+	query := `SELECT id, user_id, created_at, expires_at FROM sessions WHERE id = $1 AND expires_at > NOW()`
+	var session domains.Session
+	if err := r.db.GetContext(ctx, &session, query, sessionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, err
+	}
+	return &session, nil
 }
