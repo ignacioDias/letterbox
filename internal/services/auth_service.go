@@ -36,14 +36,16 @@ type AuthService interface {
 }
 
 type authService struct {
-	authRepository repositories.AuthRepository
+	userRepository    repositories.UserRepository
+	sessionRepository repositories.SessionRepository
 }
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
-func NewAuthService(authRepo repositories.AuthRepository) AuthService {
+func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthService {
 	return &authService{
-		authRepository: authRepo,
+		userRepository:    userRepo,
+		sessionRepository: sessionRepo,
 	}
 }
 
@@ -66,7 +68,7 @@ func (s *authService) RegisterUser(ctx context.Context, username, email, passwor
 		return nil, err
 	}
 	user := domains.NewUser(username, email, hashedPassword, "", country)
-	userID, err := s.authRepository.CreateUser(ctx, user)
+	userID, err := s.userRepository.CreateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +109,7 @@ func hashPassword(password string) (string, error) {
 
 func (s *authService) LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error) {
 	emailOrUsername = strings.TrimSpace(emailOrUsername)
-	user, err := s.authRepository.GetUserByEmailOrUsername(ctx, emailOrUsername)
+	user, err := s.userRepository.GetUserByEmailOrUsername(ctx, emailOrUsername)
 	if errors.Is(err, repositories.ErrUserNotFound) {
 		// Dummy bcrypt comparison prevents timing differences that reveal whether the account exists.
 		_ = checkPassword(dummyPasswordHash, password)
@@ -134,7 +136,7 @@ func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains
 		CreatedAt: createdAt,
 		ExpiresAt: createdAt.Add(time.Hour),
 	}
-	if err := s.authRepository.CreateSession(ctx, session); err != nil {
+	if err := s.sessionRepository.CreateSession(ctx, session); err != nil {
 		return nil, err
 	}
 	return session, nil

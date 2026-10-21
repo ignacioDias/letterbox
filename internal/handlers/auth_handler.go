@@ -6,6 +6,7 @@ import (
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
+	"log"
 	"net/http"
 	"os"
 )
@@ -14,7 +15,6 @@ type AuthHandler interface {
 	RegisterUser(w http.ResponseWriter, r *http.Request)
 	LoginUser(w http.ResponseWriter, r *http.Request)
 	LogoutUser(w http.ResponseWriter, r *http.Request)
-	GetCurrentUser(w http.ResponseWriter, r *http.Request)
 }
 
 type authHandler struct {
@@ -34,9 +34,9 @@ type LoginUserRequest struct {
 	Password        string `json:"password"`
 }
 
-func NewAuthHandler(authRepo repositories.AuthRepository) AuthHandler {
+func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthHandler {
 	return &authHandler{
-		authServices: services.NewAuthService(authRepo),
+		authServices: services.NewAuthService(userRepo, sessionRepo),
 		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }
@@ -60,8 +60,11 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error creating the user", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		log.Printf("register user: encode response: %v", err)
+	}
 }
 
 func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
@@ -96,13 +99,11 @@ func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		Expires:  session.ExpiresAt,
 	})
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		log.Printf("login user: encode response: %v", err)
+	}
 }
 
 func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic for user logout here
-}
 
-func (a *authHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to get the current authenticated user here
 }

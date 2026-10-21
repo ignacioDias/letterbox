@@ -19,12 +19,12 @@ type AuthenticationMiddleware interface {
 }
 
 type authenticationMiddleware struct {
-	authRepository repositories.AuthRepository
+	sessionRepo repositories.SessionRepository
 }
 
-func NewAuthenticationMiddleware(authRepo repositories.AuthRepository) AuthenticationMiddleware {
+func NewAuthenticationMiddleware(sessionRepo repositories.SessionRepository) AuthenticationMiddleware {
 	return &authenticationMiddleware{
-		authRepository: authRepo,
+		sessionRepo: sessionRepo,
 	}
 }
 
@@ -35,7 +35,7 @@ func (m *authenticationMiddleware) Authenticate(next http.HandlerFunc) http.Hand
 			http.Error(w, "Unauthorized: missing session cookie", http.StatusUnauthorized)
 			return
 		}
-		session, err := m.authRepository.GetSessionByID(r.Context(), cookie.Value)
+		session, err := m.sessionRepo.GetSessionByID(r.Context(), cookie.Value)
 		if errors.Is(err, repositories.ErrSessionNotFound) {
 			http.Error(w, "Unauthorized: invalid session", http.StatusUnauthorized)
 			return

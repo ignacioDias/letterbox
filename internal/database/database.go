@@ -8,14 +8,16 @@ import (
 )
 
 type Database struct {
-	DB             *sqlx.DB
-	AuthRepository repositories.AuthRepository
+	DB                *sqlx.DB
+	UserRepository    repositories.UserRepository
+	SessionRepository repositories.SessionRepository
 }
 
 func NewDatabase(db *sqlx.DB) *Database {
 	return &Database{
-		DB:             db,
-		AuthRepository: repositories.NewAuthRepository(db),
+		DB:                db,
+		UserRepository:    repositories.NewUserRepository(db),
+		SessionRepository: repositories.NewSessionRepository(db),
 	}
 }
 

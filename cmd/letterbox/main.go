@@ -41,14 +41,14 @@ func main() {
 	if err := database.Init(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	go cleanupExpiredSessions(database.AuthRepository)
+	go cleanupExpiredSessions(database.SessionRepository)
 
 	router := router.NewRouter(database)
 	server := server.NewServer(port, router)
 	server.StartServer(router)
 }
 
-func cleanupExpiredSessions(repo repositories.AuthRepository) {
+func cleanupExpiredSessions(repo repositories.SessionRepository) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
