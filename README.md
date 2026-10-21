@@ -8,13 +8,14 @@ Messaging rules: if you don't follow a user you can send only one message and th
 have to wait for them to allow the chat.
 
 - **Backend:** Go (`net/http`)
-- **Database:** PostgreSQL
+- **Database:** PostgreSQL (Docker Compose)
 - **Deployment:** Docker (planned)
 
 ## Status
 
-Early scaffold. The HTTP server, routing entry point, and graceful shutdown are in
-place; domain routes, persistence, and the Docker setup are not implemented yet.
+Early scaffold. The HTTP server, routing entry point, graceful shutdown, and local
+PostgreSQL container are in place; most domain routes and full deployment are not
+implemented yet.
 
 ## Project structure
 
@@ -22,31 +23,54 @@ place; domain routes, persistence, and the Docker setup are not implemented yet.
 cmd/letterbox/       Application entry point
 internal/router/     Route registration (http.ServeMux)
 internal/server/     HTTP server setup and graceful shutdown
-internal/database/   Database connection and schema (in progress)
+internal/database/   Database connection and schema
+compose.yaml         Local PostgreSQL container
 ```
 
 ## Requirements
 
 - Go 1.27+
-- PostgreSQL (once persistence lands)
+- Docker with the Compose plugin
 
 ## Getting started
+
+Start PostgreSQL:
+
+```sh
+cp .env.example .env   # first time only
+docker compose up -d db
+```
+
+Then run the application:
 
 ```sh
 go run ./cmd/letterbox
 ```
 
 The server listens on port `8080` and shuts down gracefully on `SIGINT`/`SIGTERM`
-with a 30-second timeout.
+with a 30-second timeout. The schema is applied automatically on startup.
+
+Useful commands:
+
+```sh
+docker compose logs -f db    # follow database logs
+docker compose down          # stop the database
+docker compose down -v       # stop and delete all data
+```
 
 ## Configuration
 
-Environment variables are loaded from `.env` (ignored by git; do not commit secrets).
+Environment variables are loaded from `.env` (ignored by git; do not commit
+secrets). Docker Compose reads the same file for the database container.
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `PORT` | HTTP listen port (currently hard-coded) | `8080` |
-| `DATABASE_URL` | PostgreSQL connection string (planned) | — |
+| `PORT` | HTTP listen port | `8080` |
+| `DATABASE_URL` | PostgreSQL connection string | — |
+| `POSTGRES_USER` | Database user | `letterbox` |
+| `POSTGRES_PASSWORD` | Database password | `letterbox` |
+| `POSTGRES_DB` | Database name | `letterbox` |
+| `POSTGRES_PORT` | Host port mapped to PostgreSQL | `5433` |
 
 ## Planned features
 
@@ -57,7 +81,8 @@ Environment variables are loaded from `.env` (ignored by git; do not commit secr
 - [ ] Likes, dislikes, and comments on posts
 - [ ] Direct messaging with follow-gated chat requests
 - [ ] PostgreSQL schema and migrations
-- [ ] Docker / docker-compose setup
+- [x] Docker Compose setup for local PostgreSQL
+- [ ] Docker deployment of the application
 
 ## Development
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"net/http"
@@ -38,8 +39,16 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
+	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) {
+		http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUsernameAlreadyExists) || errors.Is(err, repositories.ErrEmailAlreadyExists) {
+		http.Error(w, "Error: "+err.Error(), http.StatusConflict)
+		return
+	}
 	if err != nil {
-		http.Error(w, "Failed to register user: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error creating the user", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)

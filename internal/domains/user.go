@@ -4,7 +4,7 @@ type User struct {
 	ID                int64  `json:"id" db:"id"`
 	Username          string `json:"username" db:"username"`
 	Email             string `json:"email" db:"email"`
-	PasswordHash      string `json:"passwordHash" db:"password_hash"`
+	PasswordHash      string `json:"-" db:"password_hash"`
 	ProfilePictureURL string `json:"profilePictureURL" db:"profile_picture_url"`
 	Country           string `json:"country" db:"country"`
 }
