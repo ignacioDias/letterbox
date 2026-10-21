@@ -207,79 +207,8 @@ CREATE TRIGGER blocks_remove_follows
     AFTER INSERT ON blocks
     FOR EACH ROW EXECUTE FUNCTION remove_follows_on_block();
 `
-
-	// One conversation per user pair. Status only matters when the sender does not
-	// follow the recipient: pending allows one message, accepted allows all,
-	// rejected blocks the initiator.
-	CreateConversationStatusType = `
-CREATE TYPE conversation_status AS ENUM ('pending', 'accepted', 'rejected');
-`
-
-	CreateConversationsTable = `
-CREATE TABLE conversations (
-    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_a       bigint              NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    user_b       bigint              NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    initiated_by bigint              NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status       conversation_status NOT NULL DEFAULT 'pending',
-    created_at   timestamptz         NOT NULL DEFAULT now(),
-    updated_at   timestamptz         NOT NULL DEFAULT now(),
-    UNIQUE (user_a, user_b),
-    CHECK (user_a < user_b),
-    CHECK (initiated_by IN (user_a, user_b))
-);
-`
-
-	CreateConversationsUserBIndex = `
-CREATE INDEX conversations_user_b_idx ON conversations (user_b);
-`
-
-	CreateConversationsUpdatedAtTrigger = `
-CREATE TRIGGER conversations_set_updated_at
-    BEFORE UPDATE ON conversations
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-`
-
-	CreateGetOrCreateConversationFunction = `
-CREATE FUNCTION get_or_create_conversation(p_sender bigint, p_recipient bigint)
-RETURNS bigint
-LANGUAGE plpgsql AS $$
-DECLARE
-    v_a  bigint := LEAST(p_sender, p_recipient);
-    v_b  bigint := GREATEST(p_sender, p_recipient);
-    v_id bigint;
-BEGIN
-    INSERT INTO conversations (user_a, user_b, initiated_by)
-    VALUES (v_a, v_b, p_sender)
-    ON CONFLICT (user_a, user_b) DO NOTHING;
-
-    SELECT id INTO v_id FROM conversations WHERE user_a = v_a AND user_b = v_b;
-    RETURN v_id;
-END;
-$$;
-`
-
-	CreateMessagesTable = `
-CREATE TABLE messages (
-    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    conversation_id bigint      NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    sender_id       bigint      NOT NULL REFERENCES users(id)         ON DELETE CASCADE,
-    content         text        NOT NULL CHECK (length(content) BETWEEN 1 AND 4000),
-    created_at      timestamptz NOT NULL DEFAULT now(),
-    read_at         timestamptz
-);
-`
-
-	CreateMessagesConversationIndex = `
-CREATE INDEX messages_conversation_idx ON messages (conversation_id, created_at DESC, id DESC);
-`
-
-	CreateMessagesSenderIndex = `
-CREATE INDEX messages_sender_idx ON messages (sender_id);
-`
 )
 
-// SchemaStatements lists every schema object in dependency order. Execute it in a transaction.
 var SchemaStatements = []string{
 	CreateCitextExtension,
 	CreateSetUpdatedAtFunction,
@@ -317,14 +246,4 @@ var SchemaStatements = []string{
 	CreateBlocksBlockedIndex,
 	CreateRemoveFollowsOnBlockFunction,
 	CreateBlocksRemoveFollowsTrigger,
-
-	CreateConversationStatusType,
-	CreateConversationsTable,
-	CreateConversationsUserBIndex,
-	CreateConversationsUpdatedAtTrigger,
-	CreateGetOrCreateConversationFunction,
-
-	CreateMessagesTable,
-	CreateMessagesConversationIndex,
-	CreateMessagesSenderIndex,
 }
