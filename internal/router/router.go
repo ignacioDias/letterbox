@@ -12,18 +12,20 @@ type Router interface {
 }
 
 type router struct {
-	mux         *http.ServeMux
-	authHandler handlers.AuthHandler
-	userHandler handlers.UserHandler
-	auth        middleware.AuthenticationMiddleware
+	mux           *http.ServeMux
+	authHandler   handlers.AuthHandler
+	userHandler   handlers.UserHandler
+	followHandler handlers.FollowHandler
+	auth          middleware.AuthenticationMiddleware
 }
 
 func NewRouter(db *database.Database) Router {
 	return &router{
-		mux:         http.NewServeMux(),
-		authHandler: handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
-		userHandler: handlers.NewUserHandler(db.UserRepository),
-		auth:        middleware.NewAuthenticationMiddleware(db.SessionRepository),
+		mux:           http.NewServeMux(),
+		authHandler:   handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
+		userHandler:   handlers.NewUserHandler(db.UserRepository),
+		followHandler: handlers.NewFollowHandler(db.FollowRepository),
+		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
 
@@ -35,7 +37,8 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.userHandler.GetFollowersByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.userHandler.GetFollowingByUsername)
+
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
 	return r.mux
 }

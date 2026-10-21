@@ -14,19 +14,28 @@ have to wait for them to allow the chat.
 ## Status
 
 Early scaffold. The HTTP server, routing entry point, graceful shutdown, rate
-limiting, user registration and login, and local PostgreSQL container are in place;
-most domain routes and full deployment are not implemented yet.
+limiting, user registration and login, user profiles, follower/following listing,
+and local PostgreSQL container are in place; most domain routes and full deployment
+are not implemented yet.
 
 ## Project structure
 
 ```
-cmd/letterbox/       Application entry point
-internal/router/     Route registration (http.ServeMux)
-internal/server/     HTTP server setup and graceful shutdown
-internal/middleware/ HTTP middleware (rate limiting)
-internal/database/   Database connection and schema
-compose.yaml         Local PostgreSQL container
+cmd/letterbox/          Application entry point
+internal/router/        Route registration (http.ServeMux)
+internal/server/        HTTP server setup and graceful shutdown
+internal/middleware/    HTTP middleware (rate limiting, authentication)
+internal/handlers/      HTTP handlers
+internal/services/      Business logic and validation
+internal/repositories/  Database access
+internal/domains/       Domain models
+internal/database/      Database connection and schema
+compose.yaml            Local PostgreSQL container
 ```
+
+The code follows a handler → service → repository layering. Each domain has its own
+repository (`UserRepository`, `FollowRepository`, `SessionRepository`) so table
+access stays separated.
 
 ## Requirements
 
@@ -80,8 +89,7 @@ secrets). Docker Compose reads the same file for the database container.
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/register` | Implemented |
 | `POST` | `/api/v1/auth/login` | Implemented |
-| `DELETE` | `/api/v1/auth/logout` | Not implemented |
-| `GET` | `/api/v1/auth/me` | Not implemented |
+| `DELETE` | `/api/v1/auth/logout` | Implemented |
 
 Registration validates the username, email, and password, then stores the password as
 a bcrypt hash (cost 12). The hash is never returned in API responses.
@@ -91,6 +99,20 @@ Login accepts an email or username plus password and sets an `HttpOnly`,
 `sessions` table. Sets `Secure` when `APP_ENV=production`.
 
 Expired sessions are deleted when the server starts and then every hour.
+
+## Users and follows
+
+| Method | Endpoint | Auth | Status |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/users/me` | Required | Implemented |
+| `GET` | `/api/v1/users/username/{username}` | — | Implemented |
+| `GET` | `/api/v1/users/username/{username}/followers` | — | Implemented |
+| `GET` | `/api/v1/users/username/{username}/following` | — | Implemented |
+| `POST` | `/api/v1/users/username/{username}/follow` | Required | Not implemented |
+| `DELETE` | `/api/v1/users/username/{username}/follow` | Required | Not implemented |
+
+Followers and following are paginated with `?limit=` (default `20`, max `100`) and
+`?offset=` (default `0`). Both return a list of public users.
 
 ## Rate limiting
 
@@ -105,7 +127,8 @@ be added so all clients aren't limited under the proxy's IP.
 ## Planned features
 
 - [x] User registration and login with sessions
-- [ ] Logout, current-user endpoint, and session validation middleware
+- [x] Logout, current-user endpoint, and session validation middleware
+- [x] User profiles and follower/following listing
 - [ ] Follow / unfollow and blocking
 - [ ] Movie ratings (1–10)
 - [ ] Activity feed of followed users

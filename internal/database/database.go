@@ -11,6 +11,7 @@ type Database struct {
 	DB                *sqlx.DB
 	UserRepository    repositories.UserRepository
 	SessionRepository repositories.SessionRepository
+	FollowRepository  repositories.FollowRepository
 }
 
 func NewDatabase(db *sqlx.DB) *Database {
@@ -18,6 +19,7 @@ func NewDatabase(db *sqlx.DB) *Database {
 		DB:                db,
 		UserRepository:    repositories.NewUserRepository(db),
 		SessionRepository: repositories.NewSessionRepository(db),
+		FollowRepository:  repositories.NewFollowRepository(db),
 	}
 }
 
