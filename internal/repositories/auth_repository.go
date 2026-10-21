@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"database/sql"
 	"errors"
 	"letterbox/internal/domains"
 
@@ -12,6 +13,8 @@ import (
 
 type AuthRepository interface {
 	CreateUser(ctx context.Context, user *domains.User) (int64, error)
+	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
+	CreateSession(ctx context.Context, session *domains.Session) error
 }
 
 type authRepository struct {
@@ -21,6 +24,7 @@ type authRepository struct {
 var (
 	ErrUsernameAlreadyExists = errors.New("username already exists")
 	ErrEmailAlreadyExists    = errors.New("email already exists")
+	ErrUserNotFound          = errors.New("user not found")
 )
 
 func NewAuthRepository(db *sqlx.DB) AuthRepository {
@@ -45,4 +49,22 @@ func (r *authRepository) CreateUser(ctx context.Context, user *domains.User) (in
 		return 0, err
 	}
 	return user.ID, nil
+}
+
+func (r *authRepository) GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error) {
+	query := `SELECT id, username, email, password_hash, profile_picture_url, country FROM users WHERE email = $1 OR username = $2`
+	var user domains.User
+	if err := r.db.GetContext(ctx, &user, query, emailOrUsername, emailOrUsername); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *authRepository) CreateSession(ctx context.Context, session *domains.Session) error {
+	query := `INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`
+	_, err := r.db.ExecContext(ctx, query, session.ID, session.UserID, session.CreatedAt, session.ExpiresAt)
+	return err
 }

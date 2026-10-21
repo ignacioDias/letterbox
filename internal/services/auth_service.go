@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"letterbox/internal/domains"
@@ -9,6 +10,7 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -24,15 +26,20 @@ var (
 const (
 	minPasswordLength = 8
 	maxPasswordLength = 72
+	dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
 )
 
 type AuthService interface {
 	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
+	LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error)
+	CreateSession(ctx context.Context, userID int64) (*domains.Session, error)
 }
 
 type authService struct {
 	authRepository repositories.AuthRepository
 }
+
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 func NewAuthService(authRepo repositories.AuthRepository) AuthService {
 	return &authService{
@@ -96,4 +103,43 @@ func validatePassword(password string) error {
 func hashPassword(password string) (string, error) {
 	hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	return string(hashedPass), err
+}
+
+func (s *authService) LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error) {
+	emailOrUsername = strings.TrimSpace(emailOrUsername)
+	user, err := s.authRepository.GetUserByEmailOrUsername(ctx, emailOrUsername)
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		// Dummy bcrypt comparison prevents timing differences that reveal whether the account exists.
+		_ = checkPassword(dummyPasswordHash, password)
+		return nil, ErrInvalidCredentials
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := checkPassword(user.PasswordHash, password); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+	return user, nil
+}
+
+func checkPassword(hashedPassword, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+}
+
+func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains.Session, error) {
+	createdAt := time.Now()
+	session := &domains.Session{
+		ID:        generateSessionID(),
+		UserID:    userID,
+		CreatedAt: createdAt,
+		ExpiresAt: createdAt.Add(time.Hour),
+	}
+	if err := s.authRepository.CreateSession(ctx, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func generateSessionID() string {
+	return rand.Text()
 }

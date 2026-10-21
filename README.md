@@ -67,6 +67,7 @@ secrets). Docker Compose reads the same file for the database container.
 | Variable | Description | Default |
 | --- | --- | --- |
 | `PORT` | HTTP listen port | `8080` |
+| `APP_ENV` | Set to `production` to enable secure cookies | `development` |
 | `DATABASE_URL` | PostgreSQL connection string | — |
 | `POSTGRES_USER` | Database user | `letterbox` |
 | `POSTGRES_PASSWORD` | Database password | `letterbox` |

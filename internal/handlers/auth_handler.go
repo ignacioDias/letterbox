@@ -3,9 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"net/http"
+	"os"
 )
 
 type AuthHandler interface {
@@ -17,6 +19,7 @@ type AuthHandler interface {
 
 type authHandler struct {
 	authServices services.AuthService
+	secureCookie bool
 }
 
 type RegisterUserRequest struct {
@@ -26,9 +29,15 @@ type RegisterUserRequest struct {
 	Country  string `json:"country"`
 }
 
+type LoginUserRequest struct {
+	EmailOrUsername string `json:"emailOrUsername"`
+	Password        string `json:"password"`
+}
+
 func NewAuthHandler(authRepo repositories.AuthRepository) AuthHandler {
 	return &authHandler{
 		authServices: services.NewAuthService(authRepo),
+		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }
 
@@ -56,7 +65,38 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic for user login here
+	var loginReq LoginUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	user, err := a.authServices.LoginUser(r.Context(), loginReq.EmailOrUsername, loginReq.Password)
+	if errors.Is(err, services.ErrInvalidCredentials) || errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Error logging in the user", http.StatusInternalServerError)
+		return
+	}
+	session, err := a.authServices.CreateSession(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, "Error creating the session", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	http.SetCookie(w, &http.Cookie{
+		Name:     middleware.SessionCookieName,
+		Value:    session.ID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   a.secureCookie,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  session.ExpiresAt,
+	})
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }
 
 func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
