@@ -14,8 +14,8 @@ have to wait for them to allow the chat.
 ## Status
 
 Early scaffold. The HTTP server, routing entry point, graceful shutdown, rate
-limiting, and local PostgreSQL container are in place; most domain routes and full
-deployment are not implemented yet.
+limiting, user registration and login, and local PostgreSQL container are in place;
+most domain routes and full deployment are not implemented yet.
 
 ## Project structure
 
@@ -74,6 +74,24 @@ secrets). Docker Compose reads the same file for the database container.
 | `POSTGRES_DB` | Database name | `letterbox` |
 | `POSTGRES_PORT` | Host port mapped to PostgreSQL | `5433` |
 
+## Authentication
+
+| Method | Endpoint | Status |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/register` | Implemented |
+| `POST` | `/api/v1/auth/login` | Implemented |
+| `DELETE` | `/api/v1/auth/logout` | Not implemented |
+| `GET` | `/api/v1/auth/me` | Not implemented |
+
+Registration validates the username, email, and password, then stores the password as
+a bcrypt hash (cost 12). The hash is never returned in API responses.
+
+Login accepts an email or username plus password and sets an `HttpOnly`,
+`SameSite=Strict` `session_id` cookie. Sessions last **1 hour** and are stored in the
+`sessions` table. Sets `Secure` when `APP_ENV=production`.
+
+Expired sessions are deleted when the server starts and then every hour.
+
 ## Rate limiting
 
 All routes are limited to **100 requests per minute per IP**, enforced in-memory by
@@ -86,7 +104,8 @@ be added so all clients aren't limited under the proxy's IP.
 
 ## Planned features
 
-- [ ] User registration and authentication
+- [x] User registration and login with sessions
+- [ ] Logout, current-user endpoint, and session validation middleware
 - [ ] Follow / unfollow and blocking
 - [ ] Movie ratings (1–10)
 - [ ] Activity feed of followed users
