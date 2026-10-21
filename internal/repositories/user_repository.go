@@ -14,6 +14,7 @@ import (
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *domains.User) (int64, error)
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
+	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
 }
 
@@ -55,6 +56,11 @@ func (r *userRepository) CreateUser(ctx context.Context, user *domains.User) (in
 func (r *userRepository) GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error) {
 	query := `SELECT id, username, email, password_hash, profile_picture_url, country FROM users WHERE email = $1 OR username = $2`
 	return r.getUser(ctx, query, emailOrUsername, emailOrUsername)
+}
+
+func (r *userRepository) GetUserByUsername(ctx context.Context, username string) (*domains.User, error) {
+	query := `SELECT id, username, email, profile_picture_url, country FROM users WHERE username = $1`
+	return r.getUser(ctx, query, username)
 }
 
 func (r *userRepository) GetUserByID(ctx context.Context, userID int64) (*domains.User, error) {
