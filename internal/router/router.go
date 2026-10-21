@@ -35,5 +35,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.userHandler.GetFollowersByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.userHandler.GetFollowingByUsername)
 	return r.mux
 }

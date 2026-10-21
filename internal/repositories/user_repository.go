@@ -16,6 +16,8 @@ type UserRepository interface {
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
+	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 }
 
 type userRepository struct {
@@ -63,6 +65,65 @@ func (r *userRepository) GetUserByUsername(ctx context.Context, username string)
 	return r.getUser(ctx, query, username)
 }
 
+func (r *userRepository) GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
+	userID, err := r.getIDByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT u.id, u.username, u.profile_picture_url, u.country
+	FROM users u
+	JOIN follows f ON u.id = f.follower_id
+	WHERE f.followed_id = $1
+	ORDER BY u.username
+	LIMIT $2 OFFSET $3`
+	return r.getPublicUsers(ctx, query, userID, limit, offset)
+}
+
+func (r *userRepository) GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
+	userID, err := r.getIDByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT u.id, u.username, u.profile_picture_url, u.country
+	FROM users u
+	JOIN follows f ON u.id = f.followed_id
+	WHERE f.follower_id = $1
+	ORDER BY u.username
+	LIMIT $2 OFFSET $3`
+	return r.getPublicUsers(ctx, query, userID, limit, offset)
+}
+
+func (r *userRepository) getIDByUsername(ctx context.Context, username string) (int64, error) {
+	var userID int64
+	if err := r.db.GetContext(ctx, &userID, `SELECT id FROM users WHERE username = $1`, username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrUserNotFound
+		}
+		return 0, err
+	}
+	return userID, nil
+}
+
+func (r *userRepository) getPublicUsers(ctx context.Context, query string, args ...any) ([]*domains.PublicUser, error) {
+	rows, err := r.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*domains.PublicUser, 0)
+	for rows.Next() {
+		var user domains.PublicUser
+		if err := rows.StructScan(&user); err != nil {
+			return nil, err
+		}
+		users = append(users, &user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
 func (r *userRepository) GetUserByID(ctx context.Context, userID int64) (*domains.User, error) {
 	query := `SELECT id, username, email, profile_picture_url, country FROM users WHERE id = $1`
 	return r.getUser(ctx, query, userID)
