@@ -15,6 +15,7 @@ type AuthRepository interface {
 	CreateUser(ctx context.Context, user *domains.User) (int64, error)
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	CreateSession(ctx context.Context, session *domains.Session) error
+	DeleteExpiredSessions(ctx context.Context) error
 }
 
 type authRepository struct {
@@ -66,5 +67,10 @@ func (r *authRepository) GetUserByEmailOrUsername(ctx context.Context, emailOrUs
 func (r *authRepository) CreateSession(ctx context.Context, session *domains.Session) error {
 	query := `INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`
 	_, err := r.db.ExecContext(ctx, query, session.ID, session.UserID, session.CreatedAt, session.ExpiresAt)
+	return err
+}
+
+func (r *authRepository) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= NOW()`)
 	return err
 }

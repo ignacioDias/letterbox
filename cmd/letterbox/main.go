@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"letterbox/internal/database"
+	"letterbox/internal/repositories"
 	"letterbox/internal/router"
 	"letterbox/internal/server"
 	"log"
 	"os"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
@@ -38,7 +41,21 @@ func main() {
 	if err := database.Init(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
+	go cleanupExpiredSessions(database.AuthRepository)
+
 	router := router.NewRouter(database)
 	server := server.NewServer(port, router)
 	server.StartServer(router)
+}
+
+func cleanupExpiredSessions(repo repositories.AuthRepository) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+
+	for {
+		if err := repo.DeleteExpiredSessions(context.Background()); err != nil {
+			log.Printf("Failed to delete expired sessions: %v", err)
+		}
+		<-ticker.C
+	}
 }
