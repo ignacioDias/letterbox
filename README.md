@@ -13,9 +13,9 @@ have to wait for them to allow the chat.
 
 ## Status
 
-Early scaffold. The HTTP server, routing entry point, graceful shutdown, and local
-PostgreSQL container are in place; most domain routes and full deployment are not
-implemented yet.
+Early scaffold. The HTTP server, routing entry point, graceful shutdown, rate
+limiting, and local PostgreSQL container are in place; most domain routes and full
+deployment are not implemented yet.
 
 ## Project structure
 
@@ -23,6 +23,7 @@ implemented yet.
 cmd/letterbox/       Application entry point
 internal/router/     Route registration (http.ServeMux)
 internal/server/     HTTP server setup and graceful shutdown
+internal/middleware/ HTTP middleware (rate limiting)
 internal/database/   Database connection and schema
 compose.yaml         Local PostgreSQL container
 ```
@@ -72,6 +73,16 @@ secrets). Docker Compose reads the same file for the database container.
 | `POSTGRES_DB` | Database name | `letterbox` |
 | `POSTGRES_PORT` | Host port mapped to PostgreSQL | `5433` |
 
+## Rate limiting
+
+All routes are limited to **100 requests per minute per IP**, enforced in-memory by
+`internal/middleware/rate_limit.go`. Exceeding the limit returns `429 Too Many
+Requests` with a `Retry-After` header.
+
+The limit is per server process and resets when the server restarts. Client IPs come
+from `RemoteAddr`; when running behind a reverse proxy, forwarded-header support must
+be added so all clients aren't limited under the proxy's IP.
+
 ## Planned features
 
 - [ ] User registration and authentication
@@ -81,6 +92,7 @@ secrets). Docker Compose reads the same file for the database container.
 - [ ] Likes, dislikes, and comments on posts
 - [ ] Direct messaging with follow-gated chat requests
 - [ ] PostgreSQL schema and migrations
+- [x] Rate limiting middleware
 - [x] Docker Compose setup for local PostgreSQL
 - [ ] Docker deployment of the application
 
