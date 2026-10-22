@@ -28,12 +28,12 @@
 ## Auth and errors
 
 - Protect routes by wrapping the handler in `r.auth.Authenticate`. It reads the `session_id` cookie, validates the session in Postgres, and stores the user id in context; read it with `middleware.GetUserID`.
-- Sessions last 1 hour and are rejected once expired. Logout deletes only the current session and clears the cookie; account deletion cascades all user data and also clears the cookie via `clearSessionCookie`.
+- Sessions last 1 hour and are rejected once expired. Logout deletes only the current session and clears the cookie; account deletion cascades all user data and also clears the cookie via `clearSessionCookie`. Changing a password deletes every other session but keeps the current one.
 - Services and repositories expose sentinel errors (e.g. `ErrInvalidUsername`, `ErrUserNotFound`, `ErrUsernameAlreadyExists`); handlers map them to status codes. Keep this split for new endpoints (400 invalid, 404 missing, 409 conflict).
 - `PUT /users/me` treats an empty string as "keep existing value", so fields cannot currently be cleared.
 - A global limiter allows 100 requests/minute per client IP; expect `429` during repeated manual testing.
 
 ## Current gaps
 
-- Follow/unfollow, follower/following counts, and password change are stubs or unrouted. Some routes are registered but their handlers are empty; do not assume they work.
+- Follow/unfollow and follower/following counts are stubs or unrouted. Some routes are registered but their handlers are empty; do not assume they work.
 - Tables for reviews, comments, reactions, follows, and blocks exist in the schema, but only user/session/follow-listing code is implemented.

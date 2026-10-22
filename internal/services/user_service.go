@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
@@ -12,15 +13,20 @@ type UserService interface {
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	DeleteUserByID(ctx context.Context, userID int64) error
 	UpdateUserByID(ctx context.Context, userID int64, username string, email string, country string, profilePicture string) error
+	UpdateUserPasswordByID(ctx context.Context, userID int64, currentSessionID string, currentPassword string, newPassword string) error
 }
 
 type userService struct {
-	userRepository repositories.UserRepository
+	userRepository    repositories.UserRepository
+	sessionRepository repositories.SessionRepository
 }
 
-func NewUserService(userRepo repositories.UserRepository) UserService {
+var ErrInvalidNewPassword = errors.New("invalid new password format")
+
+func NewUserService(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) UserService {
 	return &userService{
-		userRepository: userRepo,
+		userRepository:    userRepo,
+		sessionRepository: sessionRepo,
 	}
 }
 
@@ -68,4 +74,28 @@ func (s *userService) UpdateUserByID(ctx context.Context, userID int64, username
 	newUser := domains.NewUser(username, email, user.PasswordHash, profilePicture, country)
 	newUser.ID = userID
 	return s.userRepository.UpdateUser(ctx, newUser)
+}
+
+func (s *userService) UpdateUserPasswordByID(ctx context.Context, userID int64, currentSessionID string, currentPassword string, newPassword string) error {
+	if err := validatePassword(currentPassword); err != nil {
+		return ErrInvalidPassword
+	}
+	passwordHash, err := s.userRepository.GetUserHashedPassword(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := validatePassword(newPassword); err != nil {
+		return ErrInvalidNewPassword
+	}
+	if err := checkPassword(passwordHash, currentPassword); err != nil {
+		return ErrInvalidPassword
+	}
+	newPasswordHash, err := hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := s.userRepository.UpdatePasswordByID(ctx, userID, newPasswordHash); err != nil {
+		return err
+	}
+	return s.sessionRepository.DeleteOtherSessions(ctx, userID, currentSessionID)
 }

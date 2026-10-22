@@ -23,7 +23,7 @@ func NewRouter(db *database.Database) Router {
 	return &router{
 		mux:           http.NewServeMux(),
 		authHandler:   handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
-		userHandler:   handlers.NewUserHandler(db.UserRepository),
+		userHandler:   handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
 		followHandler: handlers.NewFollowHandler(db.FollowRepository),
 		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
@@ -38,18 +38,19 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	// User routes
 	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
-	r.mux.HandleFunc("DELETE /api/v1/users/me", r.auth.Authenticate(r.userHandler.DeleteCurrentUser)) //TODO
-	r.mux.HandleFunc("PUT /api/v1/users/me", r.auth.Authenticate(r.userHandler.UpdateCurrentUser))    //TODO
-	r.mux.HandleFunc("GET /api/v1/users/{username}", r.userHandler.GetUserByUsername)
+	r.mux.HandleFunc("DELETE /api/v1/users/me", r.auth.Authenticate(r.userHandler.DeleteCurrentUser))
+	r.mux.HandleFunc("PUT /api/v1/users/me", r.auth.Authenticate(r.userHandler.UpdateCurrentUser))
+	r.mux.HandleFunc("PUT /api/v1/users/me/password", r.auth.Authenticate(r.userHandler.UpdateCurrentUserPassword))
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername)
 
 	// Follow routes
-	r.mux.HandleFunc("GET /api/v1/users/{username}/followers", r.followHandler.GetFollowersByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/{username}/followers/count", r.followHandler.GetFollowingCountByUsername) //TODO
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowingCountByUsername) //TODO
 
-	r.mux.HandleFunc("GET /api/v1/users/{username}/following", r.followHandler.GetFollowingByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/{username}/following/count", r.followHandler.GetFollowersCountByUsername) //TODO
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowersCountByUsername) //TODO
 
-	r.mux.HandleFunc("POST /api/v1/users/{username}/follow", r.followHandler.FollowUserByUsername)       //TODO
-	r.mux.HandleFunc("DELETE /api/v1/users/{username}/unfollow", r.followHandler.UnfollowUserByUsername) //TODO
+	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.followHandler.FollowUserByUsername)       //TODO
+	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.followHandler.UnfollowUserByUsername) //TODO
 	return r.mux
 }

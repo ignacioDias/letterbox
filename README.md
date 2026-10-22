@@ -67,6 +67,7 @@ Base path: `/api/v1`
 | `DELETE` | `/auth/logout` | Yes | Implemented |
 | `GET` | `/users/me` | Yes | Implemented |
 | `PUT` | `/users/me` | Yes | Implemented |
+| `PUT` | `/users/me/password` | Yes | Implemented |
 | `DELETE` | `/users/me` | Yes | Implemented |
 | `GET` | `/users/{username}` | No | Implemented |
 | `GET` | `/users/{username}/followers` | No | Implemented |
@@ -120,6 +121,7 @@ Login accepts an email or username and sets an `HttpOnly`, `SameSite=Strict` `se
 cookie. Sessions are stored in PostgreSQL, last **1 hour**, and are deleted hourly by a
 background cleanup job. Logout deletes only the current session and clears the cookie;
 deleting an account removes all of the user's sessions and data via cascading foreign keys.
+Changing the password requires the current password and invalidates every other session.
 
 ## Rate limiting
 
@@ -129,5 +131,4 @@ returns `429 Too Many Requests` with a `Retry-After` header.
 ## Notes and limitations
 
 - Follow/unfollow and follower/following counts are not implemented yet.
-- Password changes are not exposed through the API yet.
 - There is no test suite or lint configuration in the repository yet.

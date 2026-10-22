@@ -31,9 +31,14 @@ type UpdateUserRequest struct {
 	ProfilePicture string `json:"profilePicture"`
 }
 
-func NewUserHandler(userRepository repositories.UserRepository) UserHandler {
+type UpdateUserPasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+func NewUserHandler(userRepository repositories.UserRepository, sessionRepository repositories.SessionRepository) UserHandler {
 	return &userHandler{
-		userServices: services.NewUserService(userRepository),
+		userServices: services.NewUserService(userRepository, sessionRepository),
 		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }
@@ -134,4 +139,39 @@ func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *userHandler) UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request) {}
+func (h *userHandler) UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var updatePasswordReq UpdateUserPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&updatePasswordReq); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	err = h.userServices.UpdateUserPasswordByID(r.Context(), userID, cookie.Value, updatePasswordReq.CurrentPassword, updatePasswordReq.NewPassword)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidNewPassword) {
+			http.Error(w, "Error: invalid new password format", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, services.ErrInvalidPassword) {
+			http.Error(w, "Error with the current password", http.StatusUnauthorized)
+			return
+		}
+		if errors.Is(err, repositories.ErrUserNotFound) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("update current user password: %v", err)
+		http.Error(w, "Error updating user password", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

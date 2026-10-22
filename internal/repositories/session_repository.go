@@ -13,6 +13,7 @@ type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domains.Session) error
 	GetSessionByID(ctx context.Context, sessionID string) (*domains.Session, error)
 	DeleteSessionByID(ctx context.Context, sessionID string) error
+	DeleteOtherSessions(ctx context.Context, userID int64, keepSessionID string) error
 	DeleteExpiredSessions(ctx context.Context) error
 }
 
@@ -29,6 +30,11 @@ func NewSessionRepository(db *sqlx.DB) SessionRepository {
 func (r *sessionRepository) CreateSession(ctx context.Context, session *domains.Session) error {
 	query := `INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`
 	_, err := r.db.ExecContext(ctx, query, session.ID, session.UserID, session.CreatedAt, session.ExpiresAt)
+	return err
+}
+
+func (r *sessionRepository) DeleteOtherSessions(ctx context.Context, userID int64, keepSessionID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 AND id <> $2`, userID, keepSessionID)
 	return err
 }
 

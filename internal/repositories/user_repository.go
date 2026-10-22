@@ -16,8 +16,10 @@ type UserRepository interface {
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
+	GetUserHashedPassword(ctx context.Context, userID int64) (string, error)
 	DeleteUserByID(ctx context.Context, userID int64) error
 	UpdateUser(ctx context.Context, user *domains.User) error
+	UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error
 }
 
 type userRepository struct {
@@ -61,6 +63,17 @@ func (r *userRepository) GetUserByID(ctx context.Context, userID int64) (*domain
 	return r.getUser(ctx, query, userID)
 }
 
+func (r *userRepository) GetUserHashedPassword(ctx context.Context, userID int64) (string, error) {
+	var passwordHash string
+	if err := r.db.GetContext(ctx, &passwordHash, `SELECT password_hash FROM users WHERE id = $1`, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", err
+	}
+	return passwordHash, nil
+}
+
 func (r *userRepository) getUser(ctx context.Context, query string, args ...any) (*domains.User, error) {
 	var user domains.User
 	if err := r.db.GetContext(ctx, &user, query, args...); err != nil {
@@ -86,6 +99,15 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) err
 	result, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.ProfilePictureURL, user.Country, user.ID)
 	if err != nil {
 		return mapUniqueViolation(err)
+	}
+	return requireUserAffected(result)
+}
+
+func (r *userRepository) UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error {
+	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
+	result, err := r.db.ExecContext(ctx, query, newPasswordHash, userID)
+	if err != nil {
+		return err
 	}
 	return requireUserAffected(result)
 }

@@ -4,30 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
-	"net/mail"
-	"regexp"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	ErrInvalidUsername = errors.New("invalid username")
-	ErrInvalidEmail    = errors.New("invalid email")
-	ErrInvalidPassword = errors.New("invalid password")
-
-	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,20}$`)
-)
-
-const (
-	minPasswordLength = 8
-	maxPasswordLength = 72
-	dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
-)
+const dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
 
 type AuthService interface {
 	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
@@ -77,37 +60,6 @@ func (s *authService) RegisterUser(ctx context.Context, username, email, passwor
 	return user, nil
 }
 
-func validateUsername(username string) error {
-	if !usernamePattern.MatchString(username) {
-		return fmt.Errorf("%w: must be 3-20 characters and contain only letters, numbers, or underscores", ErrInvalidUsername)
-	}
-	return nil
-}
-
-func validateEmail(email string) error {
-	email = strings.TrimSpace(email)
-	addr, err := mail.ParseAddress(email)
-	if err != nil || addr.Address != email {
-		return fmt.Errorf("%w: must be a valid email address", ErrInvalidEmail)
-	}
-	return nil
-}
-
-func validatePassword(password string) error {
-	if len(password) < minPasswordLength {
-		return fmt.Errorf("%w: must be at least %d characters", ErrInvalidPassword, minPasswordLength)
-	}
-	if len(password) > maxPasswordLength {
-		return fmt.Errorf("%w: must be at most %d characters", ErrInvalidPassword, maxPasswordLength)
-	}
-	return nil
-}
-
-func hashPassword(password string) (string, error) {
-	hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	return string(hashedPass), err
-}
-
 func (s *authService) LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error) {
 	emailOrUsername = strings.TrimSpace(emailOrUsername)
 	user, err := s.userRepository.GetUserByEmailOrUsername(ctx, emailOrUsername)
@@ -123,10 +75,6 @@ func (s *authService) LoginUser(ctx context.Context, emailOrUsername, password s
 		return nil, ErrInvalidCredentials
 	}
 	return user, nil
-}
-
-func checkPassword(hashedPassword, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
 func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains.Session, error) {
