@@ -7,7 +7,6 @@ import (
 	"letterbox/internal/domains"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 )
 
 type FollowRepository interface {
@@ -20,9 +19,6 @@ type FollowRepository interface {
 type followRepository struct {
 	db *sqlx.DB
 }
-
-var ErrAlreadyFollowing = errors.New("already following this user")
-var ErrNotFollowing = errors.New("not following this user")
 
 func NewFollowRepository(db *sqlx.DB) FollowRepository {
 	return &followRepository{
@@ -99,14 +95,6 @@ func (r *followRepository) FollowUser(ctx context.Context, userIDFollower, userI
 		return err
 	}
 	return nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
-		return pqErr.Code == "23505"
-	}
-	return false
 }
 
 func (r *followRepository) UnfollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error {

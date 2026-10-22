@@ -27,13 +27,6 @@ type userRepository struct {
 	db *sqlx.DB
 }
 
-var (
-	ErrUsernameAlreadyExists = errors.New("username already exists")
-	ErrEmailAlreadyExists    = errors.New("email already exists")
-	ErrUserNotFound          = errors.New("user not found")
-	ErrSessionNotFound       = errors.New("session not found")
-)
-
 func NewUserRepository(db *sqlx.DB) UserRepository {
 	return &userRepository{
 		db: db,

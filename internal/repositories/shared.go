@@ -1,0 +1,26 @@
+package repositories
+
+import (
+	"errors"
+
+	"github.com/lib/pq"
+)
+
+var (
+	ErrUsernameAlreadyExists = errors.New("username already exists")
+	ErrEmailAlreadyExists    = errors.New("email already exists")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrSessionNotFound       = errors.New("session not found")
+	ErrAlreadyFollowing      = errors.New("already following this user")
+	ErrNotFollowing          = errors.New("not following this user")
+	ErrAlreadyBlocked        = errors.New("already blocked this user")
+	ErrNotBlocked            = errors.New("not blocking this user")
+)
+
+func isUniqueViolation(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "23505"
+	}
+	return false
+}
