@@ -31,15 +31,18 @@ func NewRouter(db *database.Database) Router {
 
 func (r *router) SetupRoutes() *http.ServeMux {
 
+	// Auth routes
 	r.mux.HandleFunc("POST /api/v1/auth/register", r.authHandler.RegisterUser)
 	r.mux.HandleFunc("POST /api/v1/auth/login", r.authHandler.LoginUser)
 	r.mux.HandleFunc("DELETE /api/v1/auth/logout", r.auth.Authenticate(r.authHandler.LogoutUser))
 
+	// User routes
 	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
 	r.mux.HandleFunc("DELETE /api/v1/users/me", r.auth.Authenticate(r.userHandler.DeleteCurrentUser)) //TODO
 	r.mux.HandleFunc("PUT /api/v1/users/me", r.auth.Authenticate(r.userHandler.UpdateCurrentUser))    //TODO
 	r.mux.HandleFunc("GET /api/v1/users/{username}", r.userHandler.GetUserByUsername)
 
+	// Follow routes
 	r.mux.HandleFunc("GET /api/v1/users/{username}/followers", r.followHandler.GetFollowersByUsername)
 	r.mux.HandleFunc("GET /api/v1/users/{username}/followers/count", r.followHandler.GetFollowingCountByUsername) //TODO
 

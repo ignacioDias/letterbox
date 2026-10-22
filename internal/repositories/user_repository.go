@@ -16,6 +16,8 @@ type UserRepository interface {
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
+	DeleteUserByID(ctx context.Context, userID int64) error
+	UpdateUser(ctx context.Context, user *domains.User) error
 }
 
 type userRepository struct {
@@ -77,4 +79,45 @@ func (r *userRepository) getUser(ctx context.Context, query string, args ...any)
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *userRepository) DeleteUserByID(ctx context.Context, userID int64) error {
+	query := `DELETE FROM users WHERE id = $1`
+	result, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) error {
+	query := `UPDATE users SET username = $1, email = $2, profile_picture_url = $3, country = $4, updated_at = NOW() WHERE id = $5`
+	result, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.ProfilePictureURL, user.Country, user.ID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			switch pgErr.ConstraintName {
+			case "users_username_key":
+				return ErrUsernameAlreadyExists
+			case "users_email_key":
+				return ErrEmailAlreadyExists
+			}
+		}
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }

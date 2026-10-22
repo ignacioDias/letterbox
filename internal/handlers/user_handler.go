@@ -8,6 +8,7 @@ import (
 	"letterbox/internal/services"
 	"log"
 	"net/http"
+	"os"
 )
 
 type UserHandler interface {
@@ -15,15 +16,25 @@ type UserHandler interface {
 	GetUserByUsername(w http.ResponseWriter, r *http.Request)
 	DeleteCurrentUser(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUser(w http.ResponseWriter, r *http.Request)
+	UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {
 	userServices services.UserService
+	secureCookie bool
+}
+
+type UpdateUserRequest struct {
+	Username       string `json:"username"`
+	Email          string `json:"email"`
+	Country        string `json:"country"`
+	ProfilePicture string `json:"profilePicture"`
 }
 
 func NewUserHandler(userRepository repositories.UserRepository) UserHandler {
 	return &userHandler{
 		userServices: services.NewUserService(userRepository),
+		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }
 
@@ -72,6 +83,55 @@ func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (h *userHandler) DeleteCurrentUser(w http.ResponseWriter, r *http.Request) {}
+func (h *userHandler) DeleteCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+	err := h.userServices.DeleteUserByID(r.Context(), userID)
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("delete current user: %v", err)
+		http.Error(w, "Error deleting user", http.StatusInternalServerError)
+		return
+	}
+	clearSessionCookie(w, h.secureCookie)
+	w.WriteHeader(http.StatusNoContent)
+}
 
-func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {}
+func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+	var updateReq UpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	if err := h.userServices.UpdateUserByID(r.Context(), userID, updateReq.Username, updateReq.Email, updateReq.Country, updateReq.ProfilePicture); err != nil {
+		if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) {
+			http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, repositories.ErrUsernameAlreadyExists) || errors.Is(err, repositories.ErrEmailAlreadyExists) {
+			http.Error(w, "Error: "+err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.Is(err, repositories.ErrUserNotFound) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("update current user: %v", err)
+		http.Error(w, "Error updating user", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *userHandler) UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request) {}

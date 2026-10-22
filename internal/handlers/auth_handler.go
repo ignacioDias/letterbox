@@ -115,17 +115,17 @@ func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error logging out the user", http.StatusInternalServerError)
 		return
 	}
-	a.clearSessionCookie(w)
+	clearSessionCookie(w, a.secureCookie)
 	w.WriteHeader(http.StatusOK)
 }
 
-func (a *authHandler) clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(w http.ResponseWriter, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     middleware.SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   a.secureCookie,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
