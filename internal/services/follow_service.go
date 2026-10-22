@@ -13,6 +13,8 @@ type FollowService interface {
 	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	FollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
 	UnfollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
+	GetFollowersCountByUsername(ctx context.Context, username string) (int, error)
+	GetFollowingCountByUsername(ctx context.Context, username string) (int, error)
 }
 
 type followService struct {
@@ -83,4 +85,28 @@ func (s *followService) UnfollowUserByUsername(ctx context.Context, userIDFollow
 		return ErrCannotUnfollowSelf
 	}
 	return s.followRepository.UnfollowUser(ctx, userIDFollower, followingID)
+}
+
+func (s *followService) GetFollowersCountByUsername(ctx context.Context, username string) (int, error) {
+	username = strings.TrimSpace(username)
+	if err := validateUsername(username); err != nil {
+		return 0, ErrInvalidUsername
+	}
+	userID, err := s.userRepository.GetUserIDByUsername(ctx, username)
+	if err != nil {
+		return 0, err
+	}
+	return s.followRepository.GetFollowersCountByUserID(ctx, userID)
+}
+
+func (s *followService) GetFollowingCountByUsername(ctx context.Context, username string) (int, error) {
+	username = strings.TrimSpace(username)
+	if err := validateUsername(username); err != nil {
+		return 0, ErrInvalidUsername
+	}
+	userID, err := s.userRepository.GetUserIDByUsername(ctx, username)
+	if err != nil {
+		return 0, err
+	}
+	return s.followRepository.GetFollowingCountByUserID(ctx, userID)
 }

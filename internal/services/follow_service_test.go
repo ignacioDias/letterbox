@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"letterbox/internal/domains"
@@ -251,4 +252,88 @@ func TestFollowListings(t *testing.T) {
 	if _, err := svc.GetFollowingByUsername(ctx, "a", 10, 0); !errors.Is(err, ErrInvalidUsername) {
 		t.Fatalf("GetFollowingByUsername invalid error = %v; want ErrInvalidUsername", err)
 	}
+}
+
+func testFollowCount(t *testing.T, call func(context.Context, FollowService, string) (int, error)) {
+	t.Helper()
+
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name      string
+		username  string
+		userID    int64
+		userErr   error
+		count     int
+		countErr  error
+		wantCount int
+		wantErr   error
+	}{
+		{name: "success", username: "ada", userID: 7, count: 3, wantCount: 3},
+		{name: "trims username", username: "  ada  ", userID: 7, count: 3, wantCount: 3},
+		{name: "empty username", username: "", wantErr: ErrInvalidUsername},
+		{name: "whitespace username", username: "   ", wantErr: ErrInvalidUsername},
+		{name: "short username", username: "a", wantErr: ErrInvalidUsername},
+		{name: "user not found", username: "ghost", userErr: repositories.ErrUserNotFound, wantErr: repositories.ErrUserNotFound},
+		{name: "user repository error", username: "ada", userErr: genericErr, wantErr: genericErr},
+		{name: "count repository error", username: "ada", userID: 7, countErr: genericErr, wantErr: genericErr},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotUserID int64
+			followRepo := &testutil.FakeFollowRepository{
+				GetFollowersCountByUserIDFunc: func(_ context.Context, userID int64) (int, error) {
+					gotUserID = userID
+					return tt.count, tt.countErr
+				},
+				GetFollowingCountByUserIDFunc: func(_ context.Context, userID int64) (int, error) {
+					gotUserID = userID
+					return tt.count, tt.countErr
+				},
+			}
+			userRepo := &testutil.FakeUserRepository{
+				GetUserIDByUsernameFunc: func(_ context.Context, username string) (int64, error) {
+					if errors.Is(tt.wantErr, ErrInvalidUsername) {
+						t.Fatalf("GetUserIDByUsername(%q) called for invalid username", username)
+					}
+					if username != strings.TrimSpace(tt.username) {
+						t.Fatalf("GetUserIDByUsername(%q); want %q", username, strings.TrimSpace(tt.username))
+					}
+					return tt.userID, tt.userErr
+				},
+			}
+
+			svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{})
+			got, err := call(context.Background(), svc, tt.username)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v; want nil", err)
+			}
+			if got != tt.wantCount {
+				t.Fatalf("count = %d; want %d", got, tt.wantCount)
+			}
+			if gotUserID != tt.userID {
+				t.Fatalf("count called with userID %d; want %d", gotUserID, tt.userID)
+			}
+		})
+	}
+}
+
+func TestGetFollowersCountByUsername(t *testing.T) {
+	testFollowCount(t, func(ctx context.Context, svc FollowService, username string) (int, error) {
+		return svc.GetFollowersCountByUsername(ctx, username)
+	})
+}
+
+func TestGetFollowingCountByUsername(t *testing.T) {
+	testFollowCount(t, func(ctx context.Context, svc FollowService, username string) (int, error) {
+		return svc.GetFollowingCountByUsername(ctx, username)
+	})
 }

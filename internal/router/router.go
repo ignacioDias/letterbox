@@ -47,15 +47,16 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	// Follow routes
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowingCountByUsername) //TODO
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowersCountByUsername)
 
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowersCountByUsername) //TODO
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowingCountByUsername)
 
 	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.auth.Authenticate(r.followHandler.FollowUserByUsername))
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.auth.Authenticate(r.followHandler.UnfollowUserByUsername))
 
 	r.mux.HandleFunc("POST /api/v1/users/username/{username}/block", r.auth.Authenticate(r.blockHandler.BlockUserByUsername))
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/block", r.auth.Authenticate(r.blockHandler.UnblockUserByUsername))
+
 	return r.mux
 }

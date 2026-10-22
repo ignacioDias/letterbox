@@ -2,9 +2,10 @@ package repositories
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestIsUniqueViolation(t *testing.T) {
@@ -13,8 +14,9 @@ func TestIsUniqueViolation(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{name: "unique violation", err: &pq.Error{Code: "23505"}, want: true},
-		{name: "foreign key violation", err: &pq.Error{Code: "23503"}},
+		{name: "unique violation", err: &pgconn.PgError{Code: "23505"}, want: true},
+		{name: "foreign key violation", err: &pgconn.PgError{Code: "23503"}},
+		{name: "wrapped unique violation", err: fmt.Errorf("insert follow: %w", &pgconn.PgError{Code: "23505"}), want: true},
 		{name: "other error", err: errors.New("boom")},
 		{name: "nil", err: nil},
 	}

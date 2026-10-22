@@ -12,6 +12,8 @@ import (
 type FollowRepository interface {
 	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	GetFollowersCountByUserID(ctx context.Context, userID int64) (int, error)
+	GetFollowingCountByUserID(ctx context.Context, userID int64) (int, error)
 	UnfollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error
 	FollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error
 }
@@ -110,4 +112,20 @@ func (r *followRepository) UnfollowUser(ctx context.Context, userIDFollower, use
 		return ErrNotFollowing
 	}
 	return nil
+}
+
+func (r *followRepository) GetFollowersCountByUserID(ctx context.Context, userID int64) (int, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM follows WHERE followed_id = $1`, userID); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *followRepository) GetFollowingCountByUserID(ctx context.Context, userID int64) (int, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM follows WHERE follower_id = $1`, userID); err != nil {
+		return 0, err
+	}
+	return count, nil
 }

@@ -49,7 +49,7 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
-	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) {
+	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) || errors.Is(err, services.ErrInvalidCountry) {
 		http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
 		return
 	}

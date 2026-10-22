@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -81,9 +82,15 @@ func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Error getting user", http.StatusInternalServerError)
 		return
 	}
+	publicUser := domains.PublicUser{
+		ID:                user.ID,
+		Username:          user.Username,
+		ProfilePictureURL: user.ProfilePictureURL,
+		Country:           user.Country,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(user); err != nil {
+	if err := json.NewEncoder(w).Encode(publicUser); err != nil {
 		log.Printf("get user by username: encode response: %v", err)
 	}
 }
@@ -120,7 +127,7 @@ func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.userServices.UpdateUserByID(r.Context(), userID, updateReq.Username, updateReq.Email, updateReq.Country, updateReq.ProfilePicture); err != nil {
-		if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) {
+		if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidCountry) {
 			http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
 			return
 		}

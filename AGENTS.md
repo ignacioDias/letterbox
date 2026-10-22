@@ -35,5 +35,5 @@
 
 ## Current gaps
 
-- Follow/unfollow and follower/following counts are stubs or unrouted. Some routes are registered but their handlers are empty; do not assume they work.
-- Tables for reviews, comments, reactions, follows, and blocks exist in the schema, but only user/session/follow-listing code is implemented.
+- Follow/unfollow, blocks, and follower/following lists and counts are implemented.
+- Tables for reviews, comments, and reactions exist in the schema, but no code uses them yet.

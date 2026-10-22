@@ -14,8 +14,10 @@ var (
 	ErrInvalidUsername = errors.New("invalid username")
 	ErrInvalidEmail    = errors.New("invalid email")
 	ErrInvalidPassword = errors.New("invalid password")
+	ErrInvalidCountry  = errors.New("invalid country")
 
 	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,20}$`)
+	countryPattern  = regexp.MustCompile(`^[a-zA-Z]{2}$`)
 )
 
 const (
@@ -35,6 +37,16 @@ func validateEmail(email string) error {
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
 		return fmt.Errorf("%w: must be a valid email address", ErrInvalidEmail)
+	}
+	return nil
+}
+
+func validateCountry(country string) error {
+	if country == "" {
+		return nil
+	}
+	if !countryPattern.MatchString(country) {
+		return fmt.Errorf("%w: must be a two-letter country code", ErrInvalidCountry)
 	}
 	return nil
 }

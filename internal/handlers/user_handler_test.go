@@ -109,6 +109,23 @@ func TestGetUserByUsernameHandler(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got domains.PublicUser
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.ID != 7 || got.Username != "ada" {
+				t.Fatalf("unexpected response: %+v", got)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if _, ok := body["email"]; ok {
+				t.Fatalf("response leaked email: %s", rec.Body.String())
+			}
 		})
 	}
 }
@@ -167,6 +184,7 @@ func TestUpdateCurrentUserHandler(t *testing.T) {
 		{name: "success", body: `{"country":"UY"}`, wantStatus: http.StatusNoContent},
 		{name: "invalid payload", body: `{`, wantStatus: http.StatusBadRequest},
 		{name: "invalid username", body: `{"username":"a"}`, wantStatus: http.StatusBadRequest},
+		{name: "invalid country", body: `{"country":"ARG"}`, wantStatus: http.StatusBadRequest},
 		{name: "username conflict", body: `{"username":"grace"}`, updateErr: repositories.ErrUsernameAlreadyExists, wantStatus: http.StatusConflict},
 		{name: "not found", body: `{}`, getErr: repositories.ErrUserNotFound, wantStatus: http.StatusNotFound},
 		{name: "repository error", body: `{}`, updateErr: genericErr, wantStatus: http.StatusInternalServerError},

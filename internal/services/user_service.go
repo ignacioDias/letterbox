@@ -65,10 +65,14 @@ func (s *userService) UpdateUserByID(ctx context.Context, userID int64, username
 	}
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(email)
+	country = strings.TrimSpace(country)
 	if err := validateUsername(username); err != nil {
 		return err
 	}
 	if err := validateEmail(email); err != nil {
+		return err
+	}
+	if err := validateCountry(country); err != nil {
 		return err
 	}
 	newUser := domains.NewUser(username, email, user.PasswordHash, profilePicture, country)

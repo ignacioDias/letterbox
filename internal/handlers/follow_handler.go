@@ -179,6 +179,48 @@ func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *followHandler) GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request) {}
+func (h *followHandler) GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	count, err := h.followServices.GetFollowersCountByUsername(r.Context(), username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get followers count by username: %v", err)
+		http.Error(w, "Error getting followers count", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]int{"count": count}); err != nil {
+		log.Printf("get followers count by username: encode response: %v", err)
+	}
+}
 
-func (h *followHandler) GetFollowingCountByUsername(w http.ResponseWriter, r *http.Request) {}
+func (h *followHandler) GetFollowingCountByUsername(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	count, err := h.followServices.GetFollowingCountByUsername(r.Context(), username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get following count by username: %v", err)
+		http.Error(w, "Error getting following count", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]int{"count": count}); err != nil {
+		log.Printf("get following count by username: encode response: %v", err)
+	}
+}

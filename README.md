@@ -76,10 +76,11 @@ Base path: `/api/v1`
 | `DELETE` | `/users/username/{username}/unfollow` | Yes | Implemented |
 | `POST` | `/users/username/{username}/block` | Yes | Implemented |
 | `DELETE` | `/users/username/{username}/block` | Yes | Implemented |
-| `GET` | `/users/username/{username}/followers/count` | No | Planned |
-| `GET` | `/users/username/{username}/following/count` | No | Planned |
+| `GET` | `/users/username/{username}/followers/count` | No | Implemented |
+| `GET` | `/users/username/{username}/following/count` | No | Implemented |
 
 Follower/following lists accept `limit` (1-100, default 20) and `offset` (default 0).
+Count endpoints return `{"count": N}`.
 Follow and block actions return `204 No Content` on success.
 
 ### Examples
@@ -141,9 +142,9 @@ Unblocking does **not** restore previous follow relationships.
 
 ## Authentication
 
-Registration validates the username (3-20 letters, numbers, or underscores), email, and
-password (8-72 bytes), then stores the password as a bcrypt hash (cost 12). Hashes are
-never returned in API responses.
+Registration validates the username (3-20 letters, numbers, or underscores), email,
+password (8-72 bytes), and country (optional two-letter code), then stores the password
+as a bcrypt hash (cost 12). Hashes are never returned in API responses.
 
 Login accepts an email or username and sets an `HttpOnly`, `SameSite=Strict` `session_id`
 cookie. Sessions are stored in PostgreSQL, last **1 hour**, and are deleted hourly by a
@@ -168,7 +169,6 @@ integration tests are not included because they require a running PostgreSQL ins
 
 ## Notes and limitations
 
-- Follower/following count endpoints are registered but not implemented yet.
 - Blocks currently prevent follows and remove existing follow relationships; they are not
   yet used to hide profiles, lists, reviews, comments, or reactions.
 - There is no lint configuration in the repository yet.

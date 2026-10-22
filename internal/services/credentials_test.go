@@ -65,6 +65,34 @@ func TestValidateEmail(t *testing.T) {
 	}
 }
 
+func TestValidateCountry(t *testing.T) {
+	tests := []struct {
+		name    string
+		country string
+		wantErr bool
+	}{
+		{name: "empty", country: ""},
+		{name: "valid uppercase", country: "AR"},
+		{name: "valid lowercase", country: "ar"},
+		{name: "too short", country: "A", wantErr: true},
+		{name: "too long", country: "ARG", wantErr: true},
+		{name: "non letters", country: "A1", wantErr: true},
+		{name: "space", country: "A R", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateCountry(tt.country)
+			if tt.wantErr && !errors.Is(err, ErrInvalidCountry) {
+				t.Fatalf("validateCountry(%q) = %v; want ErrInvalidCountry", tt.country, err)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("validateCountry(%q) = %v; want nil", tt.country, err)
+			}
+		})
+	}
+}
+
 func TestValidatePassword(t *testing.T) {
 	tests := []struct {
 		name     string

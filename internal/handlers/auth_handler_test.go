@@ -37,6 +37,11 @@ func TestRegisterUserHandler(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name:       "invalid country",
+			body:       `{"username":"ada","email":"ada@example.com","password":"secret123","country":"ARG"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:       "invalid username",
 			body:       `{"username":"a","email":"ada@example.com","password":"secret123"}`,
 			wantStatus: http.StatusBadRequest,

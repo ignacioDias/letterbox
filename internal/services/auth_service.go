@@ -36,6 +36,7 @@ func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositori
 func (s *authService) RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error) {
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(email)
+	country = strings.TrimSpace(country)
 
 	if err := validateUsername(username); err != nil {
 		return nil, err
@@ -44,6 +45,9 @@ func (s *authService) RegisterUser(ctx context.Context, username, email, passwor
 		return nil, err
 	}
 	if err := validatePassword(password); err != nil {
+		return nil, err
+	}
+	if err := validateCountry(country); err != nil {
 		return nil, err
 	}
 

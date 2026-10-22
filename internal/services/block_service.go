@@ -27,9 +27,6 @@ func NewBlockService(blockRepo repositories.BlockRepository, userRepo repositori
 }
 
 func (s *blockService) BlockUserByUsername(ctx context.Context, userIDBlocker int64, usernameBlocked string) error {
-	if usernameBlocked == "" {
-		return ErrInvalidUsername
-	}
 	usernameBlocked = strings.TrimSpace(usernameBlocked)
 	if err := validateUsername(usernameBlocked); err != nil {
 		return ErrInvalidUsername
@@ -45,9 +42,6 @@ func (s *blockService) BlockUserByUsername(ctx context.Context, userIDBlocker in
 }
 
 func (s *blockService) UnblockUserByUsername(ctx context.Context, userIDBlocker int64, usernameBlocked string) error {
-	if usernameBlocked == "" {
-		return ErrInvalidUsername
-	}
 	usernameBlocked = strings.TrimSpace(usernameBlocked)
 	if err := validateUsername(usernameBlocked); err != nil {
 		return ErrInvalidUsername

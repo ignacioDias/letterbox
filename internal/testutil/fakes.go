@@ -89,10 +89,12 @@ func (f *FakeSessionRepository) DeleteExpiredSessions(ctx context.Context) error
 type FakeFollowRepository struct {
 	repositories.FollowRepository
 
-	GetFollowersByUsernameFunc func(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
-	GetFollowingByUsernameFunc func(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
-	UnfollowUserFunc           func(ctx context.Context, userIDFollower, userIDFollowing int64) error
-	FollowUserFunc             func(ctx context.Context, userIDFollower, userIDFollowing int64) error
+	GetFollowersByUsernameFunc    func(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	GetFollowingByUsernameFunc    func(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	GetFollowersCountByUserIDFunc func(ctx context.Context, userID int64) (int, error)
+	GetFollowingCountByUserIDFunc func(ctx context.Context, userID int64) (int, error)
+	UnfollowUserFunc              func(ctx context.Context, userIDFollower, userIDFollowing int64) error
+	FollowUserFunc                func(ctx context.Context, userIDFollower, userIDFollowing int64) error
 }
 
 func (f *FakeFollowRepository) GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
@@ -101,6 +103,14 @@ func (f *FakeFollowRepository) GetFollowersByUsername(ctx context.Context, usern
 
 func (f *FakeFollowRepository) GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
 	return f.GetFollowingByUsernameFunc(ctx, username, limit, offset)
+}
+
+func (f *FakeFollowRepository) GetFollowersCountByUserID(ctx context.Context, userID int64) (int, error) {
+	return f.GetFollowersCountByUserIDFunc(ctx, userID)
+}
+
+func (f *FakeFollowRepository) GetFollowingCountByUserID(ctx context.Context, userID int64) (int, error) {
+	return f.GetFollowingCountByUserIDFunc(ctx, userID)
 }
 
 func (f *FakeFollowRepository) UnfollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error {

@@ -116,6 +116,12 @@ func TestUpdateUserByID(t *testing.T) {
 			wantErr: ErrInvalidEmail,
 		},
 		{
+			name:    "invalid country",
+			userID:  7,
+			country: "ARG",
+			wantErr: ErrInvalidCountry,
+		},
+		{
 			name:    "user not found",
 			userID:  7,
 			getErr:  repositories.ErrUserNotFound,

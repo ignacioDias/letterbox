@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -218,5 +219,79 @@ func TestGetFollowingHandler(t *testing.T) {
 				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestFollowCountHandlers(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	methods := []struct {
+		name   string
+		handle func(FollowHandler) http.HandlerFunc
+	}{
+		{name: "followers", handle: func(h FollowHandler) http.HandlerFunc { return h.GetFollowersCountByUsername }},
+		{name: "following", handle: func(h FollowHandler) http.HandlerFunc { return h.GetFollowingCountByUsername }},
+	}
+
+	tests := []struct {
+		name       string
+		username   string
+		userID     int64
+		userErr    error
+		count      int
+		countErr   error
+		wantStatus int
+		wantCount  int
+	}{
+		{name: "success", username: "ada", userID: 7, count: 3, wantStatus: http.StatusOK, wantCount: 3},
+		{name: "empty username", username: "", wantStatus: http.StatusBadRequest},
+		{name: "whitespace username", username: "   ", wantStatus: http.StatusBadRequest},
+		{name: "short username", username: "a", wantStatus: http.StatusBadRequest},
+		{name: "user not found", username: "ghost", userErr: repositories.ErrUserNotFound, wantStatus: http.StatusNotFound},
+		{name: "user repository error", username: "ada", userErr: genericErr, wantStatus: http.StatusInternalServerError},
+		{name: "count repository error", username: "ada", userID: 7, countErr: genericErr, wantStatus: http.StatusInternalServerError},
+	}
+
+	for _, method := range methods {
+		for _, tt := range tests {
+			t.Run(method.name+"/"+tt.name, func(t *testing.T) {
+				followRepo := &testutil.FakeFollowRepository{
+					GetFollowersCountByUserIDFunc: func(context.Context, int64) (int, error) {
+						return tt.count, tt.countErr
+					},
+					GetFollowingCountByUserIDFunc: func(context.Context, int64) (int, error) {
+						return tt.count, tt.countErr
+					},
+				}
+				userRepo := &testutil.FakeUserRepository{
+					GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
+						return tt.userID, tt.userErr
+					},
+				}
+
+				handler := NewFollowHandler(followRepo, userRepo, &testutil.FakeBlockRepository{})
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req.SetPathValue("username", tt.username)
+				rec := httptest.NewRecorder()
+				method.handle(handler)(rec, req)
+
+				if rec.Code != tt.wantStatus {
+					t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+				}
+				if tt.wantStatus != http.StatusOK {
+					return
+				}
+				if got := rec.Header().Get("Content-Type"); got != "application/json" {
+					t.Fatalf("Content-Type = %q; want application/json", got)
+				}
+				var body map[string]int
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+					t.Fatalf("decode response: %v", err)
+				}
+				if body["count"] != tt.wantCount {
+					t.Fatalf("count = %d; want %d", body["count"], tt.wantCount)
+				}
+			})
+		}
 	}
 }
