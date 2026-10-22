@@ -1,148 +1,133 @@
 # Letterbox
 
-A Letterbox copy: register, follow users, rate movies (1–10), and get a feed with
-everything the people you follow are doing. You can like, dislike, and comment on
-posts, message other users, and block users.
+A REST API backend for a social movie-rating platform. Users can register, sign in
+with cookie-based sessions, manage their profile, and browse follower/following lists.
+The data model is already prepared for reviews, comments, reactions, follows, and blocks.
 
-Messaging rules: if you don't follow a user you can send only one message and then
-have to wait for them to allow the chat.
+## Tech stack
 
-- **Backend:** Go (`net/http`)
-- **Database:** PostgreSQL (Docker Compose)
-- **Deployment:** Docker (planned)
-
-## Status
-
-Early scaffold. The HTTP server, routing entry point, graceful shutdown, rate
-limiting, user registration and login, user profiles, follower/following listing,
-and local PostgreSQL container are in place; most domain routes and full deployment
-are not implemented yet.
+- **Go 1.27** with the standard `net/http` router (`ServeMux` patterns)
+- **PostgreSQL 17** (via Docker Compose)
+- **sqlx** + **pgx** for database access
+- **bcrypt** for password hashing
+- **godotenv** for local environment loading
 
 ## Project structure
 
 ```
 cmd/letterbox/          Application entry point
-internal/router/        Route registration (http.ServeMux)
-internal/server/        HTTP server setup and graceful shutdown
-internal/middleware/    HTTP middleware (rate limiting, authentication)
-internal/handlers/      HTTP handlers
-internal/services/      Business logic and validation
-internal/repositories/  Database access
-internal/domains/       Domain models
-internal/database/      Database connection and schema
-compose.yaml            Local PostgreSQL container
+internal/
+  database/             Connection wiring, schema creation
+  domains/              Domain models (User, Session, PublicUser)
+  handlers/             HTTP handlers
+  middleware/           Authentication and rate limiting
+  repositories/         SQL queries
+  router/               Route definitions
+  server/               HTTP server, timeouts, graceful shutdown
+  services/             Business logic and validation
 ```
 
-The code follows a handler → service → repository layering. Each domain has its own
-repository (`UserRepository`, `FollowRepository`, `SessionRepository`) so table
-access stays separated.
-
-## Requirements
-
-- Go 1.27+
-- Docker with the Compose plugin
+Requests flow through `router -> handler -> service -> repository`. Each domain has its
+own repository (`UserRepository`, `SessionRepository`, `FollowRepository`) so SQL stays
+out of handlers and services.
 
 ## Getting started
 
-Start PostgreSQL:
+Requirements: Go 1.27+ and Docker.
 
-```sh
-cp .env.example .env   # first time only
-docker compose up -d db
-```
-
-Then run the application:
-
-```sh
+```bash
+cp .env.example .env
+docker compose up -d
 go run ./cmd/letterbox
 ```
 
-The server listens on port `8080` and shuts down gracefully on `SIGINT`/`SIGTERM`
-with a 30-second timeout. The schema is applied automatically on startup.
+The API listens on `http://localhost:8080` by default. The schema is created
+automatically on startup; there is no separate migration step.
 
-Useful commands:
+### Environment variables
 
-```sh
-docker compose logs -f db    # follow database logs
-docker compose down          # stop the database
-docker compose down -v       # stop and delete all data
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | none (required) | PostgreSQL connection string |
+| `PORT` | `8080` | HTTP listen port |
+| `APP_ENV` | `development` | Set to `production` to mark the session cookie `Secure` |
+| `POSTGRES_USER` | `letterbox` | Postgres user for the Compose container |
+| `POSTGRES_PASSWORD` | `letterbox` | Postgres password for the Compose container |
+| `POSTGRES_DB` | `letterbox` | Postgres database name |
+| `POSTGRES_PORT` | `5433` | Host port mapped to the container |
+
+## API
+
+Base path: `/api/v1`
+
+| Method | Path | Auth | Status |
+| --- | --- | --- | --- |
+| `POST` | `/auth/register` | No | Implemented |
+| `POST` | `/auth/login` | No | Implemented |
+| `DELETE` | `/auth/logout` | Yes | Implemented |
+| `GET` | `/users/me` | Yes | Implemented |
+| `PUT` | `/users/me` | Yes | Implemented |
+| `DELETE` | `/users/me` | Yes | Implemented |
+| `GET` | `/users/{username}` | No | Implemented |
+| `GET` | `/users/{username}/followers` | No | Implemented |
+| `GET` | `/users/{username}/following` | No | Implemented |
+| `POST` | `/users/{username}/follow` | Yes | Planned |
+| `DELETE` | `/users/{username}/unfollow` | Yes | Planned |
+| `GET` | `/users/{username}/followers/count` | No | Planned |
+| `GET` | `/users/{username}/following/count` | No | Planned |
+
+Follower/following lists accept `limit` (1-100, default 20) and `offset` (default 0).
+
+### Examples
+
+Register:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ada","email":"ada@example.com","password":"secret123","country":"AR"}'
 ```
 
-## Configuration
+Login and keep the session cookie:
 
-Environment variables are loaded from `.env` (ignored by git; do not commit
-secrets). Docker Compose reads the same file for the database container.
+```bash
+curl -i -c cookies.txt -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"emailOrUsername":"ada","password":"secret123"}'
+```
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `PORT` | HTTP listen port | `8080` |
-| `APP_ENV` | Set to `production` to enable secure cookies | `development` |
-| `DATABASE_URL` | PostgreSQL connection string | — |
-| `POSTGRES_USER` | Database user | `letterbox` |
-| `POSTGRES_PASSWORD` | Database password | `letterbox` |
-| `POSTGRES_DB` | Database name | `letterbox` |
-| `POSTGRES_PORT` | Host port mapped to PostgreSQL | `5433` |
+Update the current user (omitted fields keep their existing values):
+
+```bash
+curl -i -b cookies.txt -X PUT http://localhost:8080/api/v1/users/me \
+  -H 'Content-Type: application/json' \
+  -d '{"country":"UY"}'
+```
+
+Log out:
+
+```bash
+curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/auth/logout
+```
 
 ## Authentication
 
-| Method | Endpoint | Status |
-| --- | --- | --- |
-| `POST` | `/api/v1/auth/register` | Implemented |
-| `POST` | `/api/v1/auth/login` | Implemented |
-| `DELETE` | `/api/v1/auth/logout` | Implemented |
+Registration validates the username (3-20 letters, numbers, or underscores), email, and
+password (8-72 bytes), then stores the password as a bcrypt hash (cost 12). Hashes are
+never returned in API responses.
 
-Registration validates the username, email, and password, then stores the password as
-a bcrypt hash (cost 12). The hash is never returned in API responses.
-
-Login accepts an email or username plus password and sets an `HttpOnly`,
-`SameSite=Strict` `session_id` cookie. Sessions last **1 hour** and are stored in the
-`sessions` table. Sets `Secure` when `APP_ENV=production`.
-
-Expired sessions are deleted when the server starts and then every hour.
-
-## Users and follows
-
-| Method | Endpoint | Auth | Status |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/users/me` | Required | Implemented |
-| `GET` | `/api/v1/users/username/{username}` | — | Implemented |
-| `GET` | `/api/v1/users/username/{username}/followers` | — | Implemented |
-| `GET` | `/api/v1/users/username/{username}/following` | — | Implemented |
-| `POST` | `/api/v1/users/username/{username}/follow` | Required | Not implemented |
-| `DELETE` | `/api/v1/users/username/{username}/follow` | Required | Not implemented |
-
-Followers and following are paginated with `?limit=` (default `20`, max `100`) and
-`?offset=` (default `0`). Both return a list of public users.
+Login accepts an email or username and sets an `HttpOnly`, `SameSite=Strict` `session_id`
+cookie. Sessions are stored in PostgreSQL, last **1 hour**, and are deleted hourly by a
+background cleanup job. Logout deletes only the current session and clears the cookie;
+deleting an account removes all of the user's sessions and data via cascading foreign keys.
 
 ## Rate limiting
 
-All routes are limited to **100 requests per minute per IP**, enforced in-memory by
-`internal/middleware/rate_limit.go`. Exceeding the limit returns `429 Too Many
-Requests` with a `Retry-After` header.
+Every request is limited to 100 requests per minute per client IP. Exceeding the limit
+returns `429 Too Many Requests` with a `Retry-After` header.
 
-The limit is per server process and resets when the server restarts. Client IPs come
-from `RemoteAddr`; when running behind a reverse proxy, forwarded-header support must
-be added so all clients aren't limited under the proxy's IP.
+## Notes and limitations
 
-## Planned features
-
-- [x] User registration and login with sessions
-- [x] Logout, current-user endpoint, and session validation middleware
-- [x] User profiles and follower/following listing
-- [ ] Follow / unfollow and blocking
-- [ ] Movie ratings (1–10)
-- [ ] Activity feed of followed users
-- [ ] Likes, dislikes, and comments on posts
-- [ ] Direct messaging with follow-gated chat requests
-- [ ] PostgreSQL schema and migrations
-- [x] Rate limiting middleware
-- [x] Docker Compose setup for local PostgreSQL
-- [ ] Docker deployment of the application
-
-## Development
-
-```sh
-go build ./...    # compile
-go test ./...     # run tests
-go vet ./...      # static checks
-```
+- Follow/unfollow and follower/following counts are not implemented yet.
+- Password changes are not exposed through the API yet.
+- There is no test suite or lint configuration in the repository yet.
