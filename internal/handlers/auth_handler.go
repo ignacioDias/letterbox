@@ -1,15 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
-	"log"
 	"net/http"
 	"os"
-	"time"
 )
 
 type AuthHandler interface {
@@ -35,6 +31,20 @@ type LoginUserRequest struct {
 	Password        string `json:"password"`
 }
 
+var registerUserErrors = []errorMapping{
+	{err: services.ErrInvalidUsername, status: http.StatusBadRequest},
+	{err: services.ErrInvalidEmail, status: http.StatusBadRequest},
+	{err: services.ErrInvalidPassword, status: http.StatusBadRequest},
+	{err: services.ErrInvalidCountry, status: http.StatusBadRequest},
+	{err: repositories.ErrUsernameAlreadyExists, status: http.StatusConflict},
+	{err: repositories.ErrEmailAlreadyExists, status: http.StatusConflict},
+}
+
+var loginUserErrors = []errorMapping{
+	{err: services.ErrInvalidCredentials, status: http.StatusUnauthorized, message: "Invalid credentials"},
+	{err: repositories.ErrUserNotFound, status: http.StatusUnauthorized, message: "Invalid credentials"},
+}
+
 func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthHandler {
 	return &authHandler{
 		authServices: services.NewAuthService(userRepo, sessionRepo),
@@ -44,52 +54,33 @@ func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositori
 
 func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var registerReq RegisterUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&registerReq); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+	if !decodeJSON(w, r, &registerReq) {
 		return
 	}
 	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
-	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) || errors.Is(err, services.ErrInvalidCountry) {
-		http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, repositories.ErrUsernameAlreadyExists) || errors.Is(err, repositories.ErrEmailAlreadyExists) {
-		http.Error(w, "Error: "+err.Error(), http.StatusConflict)
-		return
-	}
 	if err != nil {
-		http.Error(w, "Error creating the user", http.StatusInternalServerError)
+		writeError(w, err, "register user", "Error creating the user", registerUserErrors...)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(user); err != nil {
-		log.Printf("register user: encode response: %v", err)
-	}
+	writeJSON(w, http.StatusCreated, user)
 }
 
 func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+	if !decodeJSON(w, r, &loginReq) {
 		return
 	}
 	user, err := a.authServices.LoginUser(r.Context(), loginReq.EmailOrUsername, loginReq.Password)
-	if errors.Is(err, services.ErrInvalidCredentials) || errors.Is(err, repositories.ErrUserNotFound) {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
 	if err != nil {
-		http.Error(w, "Error logging in the user", http.StatusInternalServerError)
+		writeError(w, err, "login user", "Error logging in the user", loginUserErrors...)
 		return
 	}
 	session, err := a.authServices.CreateSession(r.Context(), user.ID)
 	if err != nil {
-		http.Error(w, "Error creating the session", http.StatusInternalServerError)
+		writeError(w, err, "login user", "Error creating the session")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	http.SetCookie(w, &http.Cookie{
 		Name:     middleware.SessionCookieName,
 		Value:    session.ID,
@@ -99,35 +90,18 @@ func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 		Expires:  session.ExpiresAt,
 	})
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(user); err != nil {
-		log.Printf("login user: encode response: %v", err)
-	}
+	writeJSON(w, http.StatusOK, user)
 }
 
 func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(middleware.SessionCookieName)
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	sessionID, ok := requireSessionID(w, r)
+	if !ok {
 		return
 	}
-	if err := a.authServices.DeleteSession(r.Context(), cookie.Value); err != nil {
-		http.Error(w, "Error logging out the user", http.StatusInternalServerError)
+	if err := a.authServices.DeleteSession(r.Context(), sessionID); err != nil {
+		writeError(w, err, "logout user", "Error logging out the user")
 		return
 	}
 	clearSessionCookie(w, a.secureCookie)
 	w.WriteHeader(http.StatusOK)
-}
-
-func clearSessionCookie(w http.ResponseWriter, secure bool) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
-	})
 }
