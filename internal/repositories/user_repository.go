@@ -41,16 +41,7 @@ func (r *userRepository) CreateUser(ctx context.Context, user *domains.User) (in
 	query := `INSERT INTO users (username, email, password_hash, profile_picture_url, country) VALUES ($1, $2, $3, $4, $5) RETURNING id`
 	err := r.db.QueryRowContext(ctx, query, user.Username, user.Email, user.PasswordHash, user.ProfilePictureURL, user.Country).Scan(&user.ID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			switch pgErr.ConstraintName {
-			case "users_username_key":
-				return 0, ErrUsernameAlreadyExists
-			case "users_email_key":
-				return 0, ErrEmailAlreadyExists
-			}
-		}
-		return 0, err
+		return 0, mapUniqueViolation(err)
 	}
 	return user.ID, nil
 }
@@ -87,31 +78,32 @@ func (r *userRepository) DeleteUserByID(ctx context.Context, userID int64) error
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return ErrUserNotFound
-	}
-	return nil
+	return requireUserAffected(result)
 }
 
 func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) error {
 	query := `UPDATE users SET username = $1, email = $2, profile_picture_url = $3, country = $4, updated_at = NOW() WHERE id = $5`
 	result, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.ProfilePictureURL, user.Country, user.ID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			switch pgErr.ConstraintName {
-			case "users_username_key":
-				return ErrUsernameAlreadyExists
-			case "users_email_key":
-				return ErrEmailAlreadyExists
-			}
-		}
-		return err
+		return mapUniqueViolation(err)
 	}
+	return requireUserAffected(result)
+}
+
+func mapUniqueViolation(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		switch pgErr.ConstraintName {
+		case "users_username_key":
+			return ErrUsernameAlreadyExists
+		case "users_email_key":
+			return ErrEmailAlreadyExists
+		}
+	}
+	return err
+}
+
+func requireUserAffected(result sql.Result) error {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
