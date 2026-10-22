@@ -29,9 +29,9 @@ type followHandler struct {
 	followServices services.FollowService
 }
 
-func NewFollowHandler(followRepository repositories.FollowRepository, userRepository repositories.UserRepository) FollowHandler {
+func NewFollowHandler(followRepository repositories.FollowRepository, userRepository repositories.UserRepository, blockRepository repositories.BlockRepository) FollowHandler {
 	return &followHandler{
-		followServices: services.NewFollowService(followRepository, userRepository),
+		followServices: services.NewFollowService(followRepository, userRepository, blockRepository),
 	}
 }
 
@@ -133,6 +133,10 @@ func (h *followHandler) FollowUserByUsername(w http.ResponseWriter, r *http.Requ
 	}
 	if errors.Is(err, services.ErrCannotFollowSelf) {
 		http.Error(w, "Cannot follow yourself", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserBlocked) {
+		http.Error(w, "Cannot follow this user", http.StatusForbidden)
 		return
 	}
 	if err != nil {

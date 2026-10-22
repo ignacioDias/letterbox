@@ -25,7 +25,7 @@ func NewRouter(db *database.Database) Router {
 		mux:           http.NewServeMux(),
 		authHandler:   handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
 		userHandler:   handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
-		followHandler: handlers.NewFollowHandler(db.FollowRepository, db.UserRepository),
+		followHandler: handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
 		blockHandler:  handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
 		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}

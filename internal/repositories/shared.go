@@ -15,6 +15,7 @@ var (
 	ErrNotFollowing          = errors.New("not following this user")
 	ErrAlreadyBlocked        = errors.New("already blocked this user")
 	ErrNotBlocked            = errors.New("not blocking this user")
+	ErrUserBlocked           = errors.New("user is blocked")
 )
 
 func isUniqueViolation(err error) bool {

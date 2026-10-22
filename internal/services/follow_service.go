@@ -18,15 +18,17 @@ type FollowService interface {
 type followService struct {
 	userRepository   repositories.UserRepository
 	followRepository repositories.FollowRepository
+	blockRepository  repositories.BlockRepository
 }
 
 var ErrCannotFollowSelf = errors.New("cannot follow yourself")
 var ErrCannotUnfollowSelf = errors.New("cannot unfollow yourself")
 
-func NewFollowService(followRepo repositories.FollowRepository, userRepo repositories.UserRepository) FollowService {
+func NewFollowService(followRepo repositories.FollowRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository) FollowService {
 	return &followService{
 		followRepository: followRepo,
 		userRepository:   userRepo,
+		blockRepository:  blockRepo,
 	}
 }
 
@@ -57,6 +59,13 @@ func (s *followService) FollowUserByUsername(ctx context.Context, userIDFollower
 	}
 	if followingID == userIDFollower {
 		return ErrCannotFollowSelf
+	}
+	blocked, err := s.blockRepository.IsBlockedBetween(ctx, userIDFollower, followingID)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return repositories.ErrUserBlocked
 	}
 	return s.followRepository.FollowUser(ctx, userIDFollower, followingID)
 }
