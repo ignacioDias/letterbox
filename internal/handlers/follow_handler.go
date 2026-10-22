@@ -18,6 +18,8 @@ const (
 type FollowHandler interface {
 	GetFollowersByUsername(w http.ResponseWriter, r *http.Request)
 	GetFollowingByUsername(w http.ResponseWriter, r *http.Request)
+	FollowUserByUsername(w http.ResponseWriter, r *http.Request)
+	UnfollowUserByUsername(w http.ResponseWriter, r *http.Request)
 }
 
 type followHandler struct {
@@ -105,3 +107,8 @@ func parsePagination(r *http.Request) (int, int, error) {
 	}
 	return limit, offset, nil
 }
+
+func (h *followHandler) FollowUserByUsername(w http.ResponseWriter, r *http.Request) {
+}
+
+func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Request) {}

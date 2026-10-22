@@ -33,6 +33,7 @@ type AuthService interface {
 	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
 	LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error)
 	CreateSession(ctx context.Context, userID int64) (*domains.Session, error)
+	DeleteSession(ctx context.Context, sessionID string) error
 }
 
 type authService struct {
@@ -144,4 +145,8 @@ func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains
 
 func generateSessionID() string {
 	return rand.Text()
+}
+
+func (s *authService) DeleteSession(ctx context.Context, sessionID string) error {
+	return s.sessionRepository.DeleteSessionByID(ctx, sessionID)
 }

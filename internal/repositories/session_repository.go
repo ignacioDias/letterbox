@@ -12,6 +12,7 @@ import (
 type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domains.Session) error
 	GetSessionByID(ctx context.Context, sessionID string) (*domains.Session, error)
+	DeleteSessionByID(ctx context.Context, sessionID string) error
 	DeleteExpiredSessions(ctx context.Context) error
 }
 
@@ -46,4 +47,9 @@ func (r *sessionRepository) GetSessionByID(ctx context.Context, sessionID string
 		return nil, err
 	}
 	return &session, nil
+}
+
+func (r *sessionRepository) DeleteSessionByID(ctx context.Context, sessionID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = $1`, sessionID)
+	return err
 }

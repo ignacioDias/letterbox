@@ -13,6 +13,8 @@ import (
 type UserHandler interface {
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
 	GetUserByUsername(w http.ResponseWriter, r *http.Request)
+	DeleteCurrentUser(w http.ResponseWriter, r *http.Request)
+	UpdateCurrentUser(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {
@@ -69,3 +71,7 @@ func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) 
 		log.Printf("get user by username: encode response: %v", err)
 	}
 }
+
+func (h *userHandler) DeleteCurrentUser(w http.ResponseWriter, r *http.Request) {}
+
+func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {}

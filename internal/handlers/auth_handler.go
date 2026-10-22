@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 type AuthHandler interface {
@@ -105,5 +106,28 @@ func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := a.authServices.DeleteSession(r.Context(), cookie.Value); err != nil {
+		http.Error(w, "Error logging out the user", http.StatusInternalServerError)
+		return
+	}
+	a.clearSessionCookie(w)
+	w.WriteHeader(http.StatusOK)
+}
 
+func (a *authHandler) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     middleware.SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   a.secureCookie,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+	})
 }
