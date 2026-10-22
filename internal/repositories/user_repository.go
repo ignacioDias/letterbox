@@ -13,6 +13,7 @@ import (
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *domains.User) (int64, error)
+	GetUserIDByUsername(ctx context.Context, username string) (int64, error)
 	GetUserByEmailOrUsername(ctx context.Context, emailOrUsername string) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
@@ -134,4 +135,15 @@ func requireUserAffected(result sql.Result) error {
 		return ErrUserNotFound
 	}
 	return nil
+}
+
+func (r *userRepository) GetUserIDByUsername(ctx context.Context, username string) (int64, error) {
+	var userID int64
+	if err := r.db.GetContext(ctx, &userID, `SELECT id FROM users WHERE username = $1`, username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrUserNotFound
+		}
+		return 0, err
+	}
+	return userID, nil
 }

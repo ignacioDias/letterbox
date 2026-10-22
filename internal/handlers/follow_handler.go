@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"log"
@@ -28,9 +29,9 @@ type followHandler struct {
 	followServices services.FollowService
 }
 
-func NewFollowHandler(followRepository repositories.FollowRepository) FollowHandler {
+func NewFollowHandler(followRepository repositories.FollowRepository, userRepository repositories.UserRepository) FollowHandler {
 	return &followHandler{
-		followServices: services.NewFollowService(followRepository),
+		followServices: services.NewFollowService(followRepository, userRepository),
 	}
 }
 
@@ -111,9 +112,68 @@ func parsePagination(r *http.Request) (int, int, error) {
 }
 
 func (h *followHandler) FollowUserByUsername(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	username := r.PathValue("username")
+	err := h.followServices.FollowUserByUsername(r.Context(), userID, username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, repositories.ErrAlreadyFollowing) {
+		http.Error(w, "Already following this user", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, services.ErrCannotFollowSelf) {
+		http.Error(w, "Cannot follow yourself", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		log.Printf("follow user by username: %v", err)
+		http.Error(w, "Error following user", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Request) {}
+func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	username := r.PathValue("username")
+	err := h.followServices.UnfollowUserByUsername(r.Context(), userID, username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, services.ErrCannotUnfollowSelf) {
+		http.Error(w, "Cannot unfollow yourself", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrNotFollowing) {
+		http.Error(w, "Not following this user", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		log.Printf("unfollow user by username: %v", err)
+		http.Error(w, "Error unfollowing user", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func (h *followHandler) GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request) {}
 

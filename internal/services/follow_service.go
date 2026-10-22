@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
@@ -10,15 +11,22 @@ import (
 type FollowService interface {
 	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	FollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
+	UnfollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
 }
 
 type followService struct {
+	userRepository   repositories.UserRepository
 	followRepository repositories.FollowRepository
 }
 
-func NewFollowService(followRepo repositories.FollowRepository) FollowService {
+var ErrCannotFollowSelf = errors.New("cannot follow yourself")
+var ErrCannotUnfollowSelf = errors.New("cannot unfollow yourself")
+
+func NewFollowService(followRepo repositories.FollowRepository, userRepo repositories.UserRepository) FollowService {
 	return &followService{
 		followRepository: followRepo,
+		userRepository:   userRepo,
 	}
 }
 
@@ -36,4 +44,34 @@ func (s *followService) GetFollowingByUsername(ctx context.Context, username str
 		return nil, err
 	}
 	return s.followRepository.GetFollowingByUsername(ctx, username, limit, offset)
+}
+
+func (s *followService) FollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error {
+	usernameFollowing = strings.TrimSpace(usernameFollowing)
+	if err := validateUsername(usernameFollowing); err != nil {
+		return err
+	}
+	followingID, err := s.userRepository.GetUserIDByUsername(ctx, usernameFollowing)
+	if err != nil {
+		return err
+	}
+	if followingID == userIDFollower {
+		return ErrCannotFollowSelf
+	}
+	return s.followRepository.FollowUser(ctx, userIDFollower, followingID)
+}
+
+func (s *followService) UnfollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error {
+	usernameFollowing = strings.TrimSpace(usernameFollowing)
+	if err := validateUsername(usernameFollowing); err != nil {
+		return err
+	}
+	followingID, err := s.userRepository.GetUserIDByUsername(ctx, usernameFollowing)
+	if err != nil {
+		return err
+	}
+	if followingID == userIDFollower {
+		return ErrCannotUnfollowSelf
+	}
+	return s.followRepository.UnfollowUser(ctx, userIDFollower, followingID)
 }

@@ -7,16 +7,22 @@ import (
 	"letterbox/internal/domains"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type FollowRepository interface {
 	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	UnfollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error
+	FollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error
 }
 
 type followRepository struct {
 	db *sqlx.DB
 }
+
+var ErrAlreadyFollowing = errors.New("already following this user")
+var ErrNotFollowing = errors.New("not following this user")
 
 func NewFollowRepository(db *sqlx.DB) FollowRepository {
 	return &followRepository{
@@ -82,4 +88,38 @@ func (r *followRepository) getPublicUsers(ctx context.Context, query string, arg
 		return nil, err
 	}
 	return users, nil
+}
+
+func (r *followRepository) FollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO follows (follower_id, followed_id) VALUES ($1, $2)`, userIDFollower, userIDFollowing)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyFollowing
+		}
+		return err
+	}
+	return nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "23505"
+	}
+	return false
+}
+
+func (r *followRepository) UnfollowUser(ctx context.Context, userIDFollower, userIDFollowing int64) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM follows WHERE follower_id = $1 AND followed_id = $2`, userIDFollower, userIDFollowing)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrNotFollowing
+	}
+	return nil
 }

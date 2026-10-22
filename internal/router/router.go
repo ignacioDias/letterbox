@@ -24,7 +24,7 @@ func NewRouter(db *database.Database) Router {
 		mux:           http.NewServeMux(),
 		authHandler:   handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
 		userHandler:   handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
-		followHandler: handlers.NewFollowHandler(db.FollowRepository),
+		followHandler: handlers.NewFollowHandler(db.FollowRepository, db.UserRepository),
 		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
@@ -50,7 +50,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowersCountByUsername) //TODO
 
-	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.followHandler.FollowUserByUsername)       //TODO
-	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.followHandler.UnfollowUserByUsername) //TODO
+	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.auth.Authenticate(r.followHandler.FollowUserByUsername))
+	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.auth.Authenticate(r.followHandler.UnfollowUserByUsername))
 	return r.mux
 }
