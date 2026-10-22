@@ -20,6 +20,8 @@ type FollowHandler interface {
 	GetFollowingByUsername(w http.ResponseWriter, r *http.Request)
 	FollowUserByUsername(w http.ResponseWriter, r *http.Request)
 	UnfollowUserByUsername(w http.ResponseWriter, r *http.Request)
+	GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request)
+	GetFollowingCountByUsername(w http.ResponseWriter, r *http.Request)
 }
 
 type followHandler struct {
@@ -112,3 +114,7 @@ func (h *followHandler) FollowUserByUsername(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Request) {}
+
+func (h *followHandler) GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request) {}
+
+func (h *followHandler) GetFollowingCountByUsername(w http.ResponseWriter, r *http.Request) {}
