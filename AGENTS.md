@@ -2,7 +2,7 @@
 
 ## Build and verify
 
-- Go 1.27.1. There is no test suite, linter config, Makefile, or CI. Do not invent commands.
+- Go 1.27.1. There is a unit test suite (`go test ./...`), but no linter config, Makefile, or CI. Do not invent commands.
 - Run after every change:
   ```bash
   gofmt -l .

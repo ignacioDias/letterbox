@@ -1,8 +1,8 @@
 # Letterbox
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
-with cookie-based sessions, manage their profile, and browse follower/following lists.
-The data model is already prepared for reviews, comments, reactions, follows, and blocks.
+with cookie-based sessions, manage their profile, follow other users, and block or
+unblock them. The data model is already prepared for reviews, comments, and reactions.
 
 ## Tech stack
 
@@ -28,8 +28,8 @@ internal/
 ```
 
 Requests flow through `router -> handler -> service -> repository`. Each domain has its
-own repository (`UserRepository`, `SessionRepository`, `FollowRepository`) so SQL stays
-out of handlers and services.
+own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
+`BlockRepository`) so SQL stays out of handlers and services.
 
 ## Getting started
 
@@ -69,15 +69,18 @@ Base path: `/api/v1`
 | `PUT` | `/users/me` | Yes | Implemented |
 | `PUT` | `/users/me/password` | Yes | Implemented |
 | `DELETE` | `/users/me` | Yes | Implemented |
-| `GET` | `/users/{username}` | No | Implemented |
-| `GET` | `/users/{username}/followers` | No | Implemented |
-| `GET` | `/users/{username}/following` | No | Implemented |
-| `POST` | `/users/{username}/follow` | Yes | Planned |
-| `DELETE` | `/users/{username}/unfollow` | Yes | Planned |
-| `GET` | `/users/{username}/followers/count` | No | Planned |
-| `GET` | `/users/{username}/following/count` | No | Planned |
+| `GET` | `/users/username/{username}` | No | Implemented |
+| `GET` | `/users/username/{username}/followers` | No | Implemented |
+| `GET` | `/users/username/{username}/following` | No | Implemented |
+| `POST` | `/users/username/{username}/follow` | Yes | Implemented |
+| `DELETE` | `/users/username/{username}/unfollow` | Yes | Implemented |
+| `POST` | `/users/username/{username}/block` | Yes | Implemented |
+| `DELETE` | `/users/username/{username}/block` | Yes | Implemented |
+| `GET` | `/users/username/{username}/followers/count` | No | Planned |
+| `GET` | `/users/username/{username}/following/count` | No | Planned |
 
 Follower/following lists accept `limit` (1-100, default 20) and `offset` (default 0).
+Follow and block actions return `204 No Content` on success.
 
 ### Examples
 
@@ -111,6 +114,31 @@ Log out:
 curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/auth/logout
 ```
 
+Follow and unfollow another user:
+
+```bash
+curl -i -b cookies.txt -X POST http://localhost:8080/api/v1/users/username/grace/follow
+curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/users/username/grace/unfollow
+```
+
+Block and unblock another user:
+
+```bash
+curl -i -b cookies.txt -X POST http://localhost:8080/api/v1/users/username/grace/block
+curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/users/username/grace/block
+```
+
+## Follows and blocks
+
+Following yourself is rejected with `400`; following the same user twice returns `409`.
+Unfollowing someone you do not follow also returns `409`.
+
+Blocking is transactional: it removes any follow relationship in either direction and
+creates the block in a single transaction. While a block exists in either direction,
+following is rejected with `403 Forbidden`. Blocking yourself returns `400`, blocking an
+already-blocked user returns `409`, and unblocking a user you do not block returns `409`.
+Unblocking does **not** restore previous follow relationships.
+
 ## Authentication
 
 Registration validates the username (3-20 letters, numbers, or underscores), email, and
@@ -128,7 +156,19 @@ Changing the password requires the current password and invalidates every other 
 Every request is limited to 100 requests per minute per client IP. Exceeding the limit
 returns `429 Too Many Requests` with a `Retry-After` header.
 
+## Testing
+
+```bash
+go test ./...
+go test -race ./...
+```
+
+Unit tests cover services, handlers, middleware, and repository helpers. Repository
+integration tests are not included because they require a running PostgreSQL instance.
+
 ## Notes and limitations
 
-- Follow/unfollow and follower/following counts are not implemented yet.
-- There is no test suite or lint configuration in the repository yet.
+- Follower/following count endpoints are registered but not implemented yet.
+- Blocks currently prevent follows and remove existing follow relationships; they are not
+  yet used to hide profiles, lists, reviews, comments, or reactions.
+- There is no lint configuration in the repository yet.
