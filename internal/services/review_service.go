@@ -8,7 +8,7 @@ import (
 )
 
 type ReviewService interface {
-	GetReviewsFromUserByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.Review, error)
+	GetReviewsFromUserByUsername(ctx context.Context, userID int64, username string, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) error
 	UpdateReviewForMovieByID(ctx context.Context, review *domains.Review) error
 	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int64) error
@@ -18,18 +18,20 @@ type ReviewService interface {
 type reviewService struct {
 	reviewRepository repositories.ReviewRepository
 	userRepository   repositories.UserRepository
+	blockRepository  repositories.BlockRepository
 	movieRepository  repositories.MovieRepository
 }
 
-func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, movieRepo repositories.MovieRepository) ReviewService {
+func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewService {
 	return &reviewService{
 		reviewRepository: reviewRepo,
 		userRepository:   userRepo,
+		blockRepository:  blockRepo,
 		movieRepository:  movieRepo,
 	}
 }
 
-func (s *reviewService) GetReviewsFromUserByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.Review, error) {
+func (s *reviewService) GetReviewsFromUserByUsername(ctx context.Context, userID int64, username string, limit, offset int) ([]*domains.Review, error) {
 	username = strings.TrimSpace(username)
 	if err := validateUsername(username); err != nil {
 		return nil, err
@@ -38,8 +40,15 @@ func (s *reviewService) GetReviewsFromUserByUsername(ctx context.Context, userna
 	if err != nil {
 		return nil, err
 	}
-	userID := user.ID
-	return s.reviewRepository.GetReviewsFromUserByUserID(ctx, userID, limit, offset)
+	reviewerID := user.ID
+	blocked, err := s.blockRepository.IsBlockedBetween(ctx, userID, reviewerID)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return nil, repositories.ErrUserBlocked
+	}
+	return s.reviewRepository.GetReviewsFromUserByUserID(ctx, reviewerID, limit, offset)
 }
 
 func (s *reviewService) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) error {
@@ -57,6 +66,5 @@ func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int
 }
 
 func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
-	// return s.reviewRepository.GetReviewsFromFollowingUsers(ctx, userID, limit, offset)
-	return nil, nil
+	return s.reviewRepository.GetReviewsFromFollowingUsers(ctx, userID, limit, offset)
 }

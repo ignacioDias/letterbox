@@ -28,7 +28,7 @@ func NewRouter(db *database.Database) Router {
 		userHandler:   handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
 		followHandler: handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
 		blockHandler:  handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
-		reviewHandler: handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.MovieRepository),
+		reviewHandler: handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, db.MovieRepository),
 		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
@@ -62,11 +62,13 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/block", r.auth.Authenticate(r.blockHandler.UnblockUserByUsername))
 
 	//Review routes
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.reviewHandler.GetReviewsFromUserByUsername)
-	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.reviewHandler.CreateReviewForMovieByID)   //TODO
-	r.mux.HandleFunc("PUT /api/v1/movies/{movie_id}/reviews", r.reviewHandler.UpdateReviewForMovieByID)    //TODO
-	r.mux.HandleFunc("DELETE /api/v1/movies/{movie_id}/reviews", r.reviewHandler.DeleteReviewForMovieByID) //TODO
-	r.mux.HandleFunc("GET /api/v1/reviews/following", r.reviewHandler.GetReviewsFromFollowingUsers)        //TODO
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.auth.Authenticate(r.reviewHandler.GetReviewsFromUserByUsername))
+	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))
+
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)                          //TODO
+	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))   //TODO
+	r.mux.HandleFunc("PUT /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.UpdateReviewForMovieByID))    //TODO
+	r.mux.HandleFunc("DELETE /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.DeleteReviewForMovieByID)) //TODO
 
 	return r.mux
 }

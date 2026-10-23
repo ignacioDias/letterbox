@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 `
 
-	CreateReviewsUserCreatedIndex = `
-CREATE INDEX IF NOT EXISTS reviews_user_created_idx ON reviews (user_id, created_at DESC);
+	CreateReviewsUserUpdatedIndex = `
+CREATE INDEX IF NOT EXISTS reviews_user_updated_idx ON reviews (user_id, updated_at DESC);
 `
 
 	CreateReviewsMovieCreatedIndex = `
@@ -158,7 +158,7 @@ var SchemaStatements = []string{
 	CreateMoviesTable,
 
 	CreateReviewsTable,
-	CreateReviewsUserCreatedIndex,
+	CreateReviewsUserUpdatedIndex,
 	CreateReviewsMovieCreatedIndex,
 
 	CreateCommentsTable,

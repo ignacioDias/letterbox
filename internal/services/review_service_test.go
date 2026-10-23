@@ -15,43 +15,51 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 	wantReviews := []*domains.Review{{ID: 1, UserID: 42, MovieID: 10, Score: 8}}
 
 	tests := []struct {
-		name          string
-		username      string
-		userID        int64
-		userErr       error
-		reviews       []*domains.Review
-		reviewsErr    error
-		wantErr       error
-		wantUsername  string
-		wantUserID    int64
-		wantLimit     int
-		wantOffset    int
-		wantReviews   []*domains.Review
-		wantLookupRun bool
+		name           string
+		username       string
+		requesterID    int64
+		userID         int64
+		userErr        error
+		blocked        bool
+		blockErr       error
+		reviews        []*domains.Review
+		reviewsErr     error
+		wantErr        error
+		wantUsername   string
+		wantUserID     int64
+		wantLimit      int
+		wantOffset     int
+		wantReviews    []*domains.Review
+		wantLookupRun  bool
+		wantBlockCheck bool
 	}{
 		{
-			name:          "success",
-			username:      "grace",
-			userID:        42,
-			reviews:       wantReviews,
-			wantUsername:  "grace",
-			wantUserID:    42,
-			wantLimit:     20,
-			wantOffset:    5,
-			wantReviews:   wantReviews,
-			wantLookupRun: true,
+			name:           "success",
+			username:       "grace",
+			requesterID:    7,
+			userID:         42,
+			reviews:        wantReviews,
+			wantUsername:   "grace",
+			wantUserID:     42,
+			wantLimit:      20,
+			wantOffset:     5,
+			wantReviews:    wantReviews,
+			wantLookupRun:  true,
+			wantBlockCheck: true,
 		},
 		{
-			name:          "trims username",
-			username:      "  grace  ",
-			userID:        42,
-			reviews:       wantReviews,
-			wantUsername:  "grace",
-			wantUserID:    42,
-			wantLimit:     20,
-			wantOffset:    0,
-			wantReviews:   wantReviews,
-			wantLookupRun: true,
+			name:           "trims username",
+			username:       "  grace  ",
+			requesterID:    7,
+			userID:         42,
+			reviews:        wantReviews,
+			wantUsername:   "grace",
+			wantUserID:     42,
+			wantLimit:      20,
+			wantOffset:     0,
+			wantReviews:    wantReviews,
+			wantLookupRun:  true,
+			wantBlockCheck: true,
 		},
 		{
 			name:     "invalid username",
@@ -61,20 +69,45 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 		{
 			name:          "user not found",
 			username:      "ghost",
+			requesterID:   7,
 			userErr:       repositories.ErrUserNotFound,
 			wantErr:       repositories.ErrUserNotFound,
 			wantUsername:  "ghost",
 			wantLookupRun: true,
 		},
 		{
-			name:          "review repository error",
-			username:      "grace",
-			userID:        42,
-			reviewsErr:    genericErr,
-			wantErr:       genericErr,
-			wantUsername:  "grace",
-			wantUserID:    42,
-			wantLookupRun: true,
+			name:           "blocked",
+			username:       "grace",
+			requesterID:    7,
+			userID:         42,
+			blocked:        true,
+			wantErr:        repositories.ErrUserBlocked,
+			wantUsername:   "grace",
+			wantLookupRun:  true,
+			wantBlockCheck: true,
+		},
+		{
+			name:           "block repository error",
+			username:       "grace",
+			requesterID:    7,
+			userID:         42,
+			blockErr:       genericErr,
+			wantErr:        genericErr,
+			wantUsername:   "grace",
+			wantLookupRun:  true,
+			wantBlockCheck: true,
+		},
+		{
+			name:           "review repository error",
+			username:       "grace",
+			requesterID:    7,
+			userID:         42,
+			reviewsErr:     genericErr,
+			wantErr:        genericErr,
+			wantUsername:   "grace",
+			wantUserID:     42,
+			wantLookupRun:  true,
+			wantBlockCheck: true,
 		},
 	}
 
@@ -83,6 +116,7 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 			var gotUsername string
 			var gotUserID int64
 			var gotLimit, gotOffset int
+			var gotBlockPair [2]int64
 			userRepo := &testutil.FakeUserRepository{
 				GetUserByUsernameFunc: func(_ context.Context, username string) (*domains.User, error) {
 					if !tt.wantLookupRun {
@@ -92,6 +126,15 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 					return &domains.User{ID: tt.userID, Username: username}, tt.userErr
 				},
 			}
+			blockRepo := &testutil.FakeBlockRepository{
+				IsBlockedBetweenFunc: func(_ context.Context, userID1, userID2 int64) (bool, error) {
+					if !tt.wantBlockCheck {
+						t.Fatalf("IsBlockedBetween(%d, %d) called; want no block check", userID1, userID2)
+					}
+					gotBlockPair = [2]int64{userID1, userID2}
+					return tt.blocked, tt.blockErr
+				},
+			}
 			reviewRepo := &testutil.FakeReviewRepository{
 				GetReviewsFromUserByUserIDFunc: func(_ context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
 					gotUserID, gotLimit, gotOffset = userID, limit, offset
@@ -99,8 +142,8 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, userRepo, nil)
-			reviews, err := svc.GetReviewsFromUserByUsername(context.Background(), tt.username, 20, tt.wantOffset)
+			svc := NewReviewService(reviewRepo, userRepo, blockRepo, nil)
+			reviews, err := svc.GetReviewsFromUserByUsername(context.Background(), tt.requesterID, tt.username, 20, tt.wantOffset)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
@@ -113,6 +156,9 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 			}
 			if gotUsername != tt.wantUsername {
 				t.Fatalf("GetUserByUsername() called with %q; want %q", gotUsername, tt.wantUsername)
+			}
+			if gotBlockPair != [2]int64{tt.requesterID, tt.userID} {
+				t.Fatalf("IsBlockedBetween() called with %v; want %v", gotBlockPair, [2]int64{tt.requesterID, tt.userID})
 			}
 			if gotUserID != tt.wantUserID || gotLimit != tt.wantLimit || gotOffset != tt.wantOffset {
 				t.Fatalf("GetReviewsFromUserByUserID() called with (%d, %d, %d); want (%d, %d, %d)",
