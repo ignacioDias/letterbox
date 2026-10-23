@@ -2,9 +2,10 @@
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
 with cookie-based sessions, manage their profile, follow other users, block or
-unblock them, list the reviews a user has written, and read a feed of reviews from
-the users they follow. The data model is prepared for the rest of the review flow,
-comments, and reactions; those endpoints are not implemented yet.
+unblock them, list the reviews a user has written, read a feed of reviews from the
+users they follow, and list the reviews for a movie. The data model is prepared for
+the rest of the review flow, comments, and reactions; those endpoints are not
+implemented yet.
 
 ## Tech stack
 
@@ -86,22 +87,24 @@ Base path: `/api/v1`
 | `GET` | `/users/username/{username}/following/count` | No | Implemented |
 | `GET` | `/users/username/{username}/reviews` | Yes | Implemented |
 | `GET` | `/reviews/following` | Yes | Implemented |
-| `GET` | `/movies/{movie_id}/reviews` | No | Stub |
+| `GET` | `/movies/{movie_id}/reviews` | No | Implemented |
 | `POST` | `/movies/{movie_id}/reviews` | Yes | Stub |
 | `PUT` | `/movies/{movie_id}/reviews` | Yes | Stub |
 | `DELETE` | `/movies/{movie_id}/reviews` | Yes | Stub |
 
-Follower/following lists, a user's reviews, and the following feed accept `limit`
-(1-100, default 20) and `offset` (default 0). Count endpoints return `{"count": N}`.
-Follow and block actions return `204 No Content` on success.
+Follower/following lists, a user's reviews, the following feed, and a movie's reviews
+accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
+`{"count": N}`. Follow and block actions return `204 No Content` on success.
 
 Reviews are returned newest-updated first as a JSON array of review objects (`id`,
 `user_id`, `movie_id`, `score`, `content`, `contains_spoilers`, `created_at`,
 `updated_at`), with `id` as the tiebreaker. `GET /reviews/following` returns reviews
 from every user the authenticated user follows. If a block exists in either direction,
-`GET /users/username/{username}/reviews` returns `403 Forbidden`. The movie review
-stub routes are registered but their handlers are empty, so they currently return
-`200 OK` with no body.
+`GET /users/username/{username}/reviews` returns `403 Forbidden`.
+`GET /movies/{movie_id}/reviews` is public and returns `400 Bad Request` for movie IDs
+that are not positive 32-bit integers. The review creation, update, and delete routes
+are registered but their handlers are empty, so they currently return `200 OK` with no
+body.
 
 ### Examples
 
@@ -207,8 +210,8 @@ are not included because they require a running PostgreSQL instance.
 
 ## Notes and limitations
 
-- Review listing (per user and following feed) is read-only. Creating, updating,
-  deleting, and listing reviews by movie are stubs, and `MovieRepository` has no methods.
+- Review listing (per user, following feed, and per movie) is read-only. Creating,
+  updating, and deleting reviews are stubs, and `MovieRepository` has no methods.
 - `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
 - Tables for movies, comments, and reactions exist; comments and reactions have no code.
 - Blocks prevent follows, remove existing follow relationships, and hide reviews in both

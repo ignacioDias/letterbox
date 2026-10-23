@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX IF NOT EXISTS reviews_user_updated_idx ON reviews (user_id, updated_at DESC);
 `
 
-	CreateReviewsMovieCreatedIndex = `
-CREATE INDEX IF NOT EXISTS reviews_movie_created_idx ON reviews (movie_id, created_at DESC);
+	CreateReviewsMovieUpdatedIndex = `
+CREATE INDEX IF NOT EXISTS reviews_movie_updated_idx ON reviews (movie_id, updated_at DESC, id DESC);
 `
 
 	// A NULL parent_comment_id is a review comment; the composite FK keeps replies on the same review.
@@ -159,7 +159,7 @@ var SchemaStatements = []string{
 
 	CreateReviewsTable,
 	CreateReviewsUserUpdatedIndex,
-	CreateReviewsMovieCreatedIndex,
+	CreateReviewsMovieUpdatedIndex,
 
 	CreateCommentsTable,
 	CreateCommentsReviewCreatedIndex,

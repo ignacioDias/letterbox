@@ -170,3 +170,68 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReviewsFromMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	wantReviews := []*domains.Review{{ID: 1, UserID: 42, MovieID: 10, Score: 8}}
+
+	tests := []struct {
+		name        string
+		movieID     int64
+		limit       int
+		offset      int
+		reviews     []*domains.Review
+		reviewsErr  error
+		wantErr     error
+		wantReviews []*domains.Review
+	}{
+		{
+			name:        "success",
+			movieID:     10,
+			limit:       20,
+			offset:      5,
+			reviews:     wantReviews,
+			wantReviews: wantReviews,
+		},
+		{
+			name:       "repository error",
+			movieID:    10,
+			limit:      20,
+			reviewsErr: genericErr,
+			wantErr:    genericErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMovieID int64
+			var gotLimit, gotOffset int
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewsFromMovieByIDFunc: func(_ context.Context, movieID int64, limit, offset int) ([]*domains.Review, error) {
+					gotMovieID, gotLimit, gotOffset = movieID, limit, offset
+					return tt.reviews, tt.reviewsErr
+				},
+			}
+
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			reviews, err := svc.GetReviewsFromMovieByID(context.Background(), tt.movieID, tt.limit, tt.offset)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetReviewsFromMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetReviewsFromMovieByID() error = %v; want nil", err)
+			}
+			if gotMovieID != tt.movieID || gotLimit != tt.limit || gotOffset != tt.offset {
+				t.Fatalf("GetReviewsFromMovieByID() called with (%d, %d, %d); want (%d, %d, %d)",
+					gotMovieID, gotLimit, gotOffset, tt.movieID, tt.limit, tt.offset)
+			}
+			if len(reviews) != len(tt.wantReviews) || reviews[0].ID != tt.wantReviews[0].ID {
+				t.Fatalf("GetReviewsFromMovieByID() = %v; want %v", reviews, tt.wantReviews)
+			}
+		})
+	}
+}

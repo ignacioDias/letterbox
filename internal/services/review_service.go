@@ -10,6 +10,7 @@ import (
 type ReviewService interface {
 	GetReviewsFromUserByUsername(ctx context.Context, userID int64, username string, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) error
+	GetReviewsFromMovieByID(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error)
 	UpdateReviewForMovieByID(ctx context.Context, review *domains.Review) error
 	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int64) error
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
@@ -67,4 +68,8 @@ func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int
 
 func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
 	return s.reviewRepository.GetReviewsFromFollowingUsers(ctx, userID, limit, offset)
+}
+
+func (s *reviewService) GetReviewsFromMovieByID(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error) {
+	return s.reviewRepository.GetReviewsFromMovieByID(ctx, movieID, limit, offset)
 }

@@ -125,10 +125,15 @@ type FakeReviewRepository struct {
 	repositories.ReviewRepository
 
 	GetReviewsFromUserByUserIDFunc func(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
+	GetReviewsFromMovieByIDFunc    func(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error)
 }
 
 func (f *FakeReviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
 	return f.GetReviewsFromUserByUserIDFunc(ctx, userID, limit, offset)
+}
+
+func (f *FakeReviewRepository) GetReviewsFromMovieByID(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error) {
+	return f.GetReviewsFromMovieByIDFunc(ctx, movieID, limit, offset)
 }
 
 type FakeBlockRepository struct {

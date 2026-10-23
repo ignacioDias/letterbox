@@ -148,3 +148,82 @@ func TestGetReviewsFromUserByUsernameHandlerWithoutAuth(t *testing.T) {
 		t.Fatalf("status = %d; want 401", rec.Code)
 	}
 }
+
+func TestGetReviewsFromMovieByIDHandler(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	wantReviews := []*domains.Review{{ID: 1, UserID: 42, MovieID: 10, Score: 8}}
+
+	tests := []struct {
+		name       string
+		movieID    string
+		query      string
+		reviews    []*domains.Review
+		reviewsErr error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "success",
+			movieID:    "10",
+			reviews:    wantReviews,
+			wantStatus: http.StatusOK,
+			wantBody:   `[{"id":1,"user_id":42,"movie_id":10,"score":8,"content":"","contains_spoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]`,
+		},
+		{
+			name:       "non-numeric movie id",
+			movieID:    "abc",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "zero movie id",
+			movieID:    "0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "negative movie id",
+			movieID:    "-1",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "movie id above int32",
+			movieID:    "2147483648",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid pagination",
+			movieID:    "10",
+			query:      "?limit=0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "repository error",
+			movieID:    "10",
+			reviewsErr: genericErr,
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewsFromMovieByIDFunc: func(context.Context, int64, int, int) ([]*domains.Review, error) {
+					return tt.reviews, tt.reviewsErr
+				},
+			}
+
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/reviews"+tt.query, nil)
+			req.SetPathValue("movie_id", tt.movieID)
+			rec := httptest.NewRecorder()
+
+			handler.GetReviewsFromMovieByID(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantBody != "" && rec.Body.String() != tt.wantBody+"\n" {
+				t.Fatalf("body = %q; want %q", rec.Body.String(), tt.wantBody)
+			}
+		})
+	}
+}

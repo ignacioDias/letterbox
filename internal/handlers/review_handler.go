@@ -7,6 +7,7 @@ import (
 	"letterbox/internal/services"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type ReviewHandler interface {
@@ -83,4 +84,26 @@ func (h *reviewHandler) GetReviewsFromFollowingUsers(w http.ResponseWriter, r *h
 	}
 	writeJSON(w, http.StatusOK, reviews)
 }
-func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) {}
+func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) { //TODO: improve with TMDB
+	movieID, err := strconv.ParseInt(r.PathValue("movie_id"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	if movieID <= 0 {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
+		return
+	}
+	reviews, err := h.reviewService.GetReviewsFromMovieByID(r.Context(), movieID, limit, offset)
+	if err != nil {
+		log.Printf("get reviews from movie by ID: %v", err)
+		http.Error(w, "Failed to get reviews", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviews)
+}
