@@ -18,14 +18,6 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	}
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
 func requireSessionID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(middleware.SessionCookieName)
 	if err != nil || cookie.Value == "" {
@@ -66,4 +58,16 @@ func parsePagination(r *http.Request) (int, int, error) {
 		offset = value
 	}
 	return limit, offset, nil
+}
+
+func getMovieIDFromRequest(r *http.Request) (int32, error) {
+	parsedMovieID, err := strconv.ParseInt(r.PathValue("movie_id"), 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	movieID := int32(parsedMovieID)
+	if movieID <= 0 {
+		return 0, errors.New("invalid movie ID")
+	}
+	return movieID, nil
 }

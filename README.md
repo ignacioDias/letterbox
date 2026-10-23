@@ -88,7 +88,7 @@ Base path: `/api/v1`
 | `GET` | `/users/username/{username}/reviews` | Yes | Implemented |
 | `GET` | `/reviews/following` | Yes | Implemented |
 | `GET` | `/movies/{movie_id}/reviews` | No | Implemented |
-| `POST` | `/movies/{movie_id}/reviews` | Yes | Stub |
+| `POST` | `/movies/{movie_id}/reviews` | Yes | Implemented |
 | `PUT` | `/movies/{movie_id}/reviews` | Yes | Stub |
 | `DELETE` | `/movies/{movie_id}/reviews` | Yes | Stub |
 
@@ -102,9 +102,14 @@ Reviews are returned newest-updated first as a JSON array of review objects (`id
 from every user the authenticated user follows. If a block exists in either direction,
 `GET /users/username/{username}/reviews` returns `403 Forbidden`.
 `GET /movies/{movie_id}/reviews` is public and returns `400 Bad Request` for movie IDs
-that are not positive 32-bit integers. The review creation, update, and delete routes
-are registered but their handlers are empty, so they currently return `200 OK` with no
-body.
+that are not positive 32-bit integers.
+
+`POST /movies/{movie_id}/reviews` creates a review for the authenticated user. `score`
+is required and must be between 1 and 10; `content` may be empty; `contains_spoilers`
+defaults to `false`. It returns `201 Created` with the review, `400` for invalid input,
+`404` if the movie is not in the local cache, and `409` if the user already reviewed
+that movie. The update and delete routes are registered but their handlers are empty,
+so they currently return `200 OK` with no body.
 
 ### Examples
 
@@ -210,8 +215,10 @@ are not included because they require a running PostgreSQL instance.
 
 ## Notes and limitations
 
-- Review listing (per user, following feed, and per movie) is read-only. Creating,
-  updating, and deleting reviews are stubs, and `MovieRepository` has no methods.
+- Review listing (per user, following feed, and per movie) and review creation are
+  implemented. Updating and deleting reviews are stubs, and `MovieRepository` has no
+  methods. Creating a review requires the movie to already exist in the local `movies`
+  cache.
 - `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
 - Tables for movies, comments, and reactions exist; comments and reactions have no code.
 - Blocks prevent follows, remove existing follow relationships, and hide reviews in both

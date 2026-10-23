@@ -177,7 +177,7 @@ func TestGetReviewsFromMovieByID(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		movieID     int64
+		movieID     int32
 		limit       int
 		offset      int
 		reviews     []*domains.Review
@@ -204,10 +204,10 @@ func TestGetReviewsFromMovieByID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var gotMovieID int64
+			var gotMovieID int32
 			var gotLimit, gotOffset int
 			reviewRepo := &testutil.FakeReviewRepository{
-				GetReviewsFromMovieByIDFunc: func(_ context.Context, movieID int64, limit, offset int) ([]*domains.Review, error) {
+				GetReviewsFromMovieByIDFunc: func(_ context.Context, movieID int32, limit, offset int) ([]*domains.Review, error) {
 					gotMovieID, gotLimit, gotOffset = movieID, limit, offset
 					return tt.reviews, tt.reviewsErr
 				},
@@ -231,6 +231,80 @@ func TestGetReviewsFromMovieByID(t *testing.T) {
 			}
 			if len(reviews) != len(tt.wantReviews) || reviews[0].ID != tt.wantReviews[0].ID {
 				t.Fatalf("GetReviewsFromMovieByID() = %v; want %v", reviews, tt.wantReviews)
+			}
+		})
+	}
+}
+
+func TestCreateReviewForMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name         string
+		score        int16
+		repoErr      error
+		wantErr      error
+		wantRepoCall bool
+	}{
+		{
+			name:         "success",
+			score:        8,
+			wantRepoCall: true,
+		},
+		{
+			name:         "repository error",
+			score:        8,
+			repoErr:      genericErr,
+			wantErr:      genericErr,
+			wantRepoCall: true,
+		},
+		{
+			name:    "score below minimum",
+			score:   0,
+			wantErr: ErrInvalidScore,
+		},
+		{
+			name:    "score above maximum",
+			score:   11,
+			wantErr: ErrInvalidScore,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotReview *domains.Review
+			reviewRepo := &testutil.FakeReviewRepository{
+				CreateReviewForMovieByIDFunc: func(_ context.Context, review *domains.Review) (*domains.Review, error) {
+					if !tt.wantRepoCall {
+						t.Fatalf("CreateReviewForMovieByID() called; want no repository call")
+					}
+					gotReview = review
+					if tt.repoErr != nil {
+						return nil, tt.repoErr
+					}
+					review.ID = 1
+					return review, nil
+				},
+			}
+
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			review := domains.NewReview(42, 10, tt.score, "great", false)
+			created, err := svc.CreateReviewForMovieByID(context.Background(), review)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("CreateReviewForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateReviewForMovieByID() error = %v; want nil", err)
+			}
+			if gotReview != review {
+				t.Fatalf("CreateReviewForMovieByID() passed %v; want %v", gotReview, review)
+			}
+			if created.ID != 1 {
+				t.Fatalf("CreateReviewForMovieByID() returned ID %d; want 1", created.ID)
 			}
 		})
 	}

@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     user_id           BIGINT      NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
     movie_id          integer     NOT NULL REFERENCES movies(tmdb_id) ON DELETE RESTRICT,
     score             smallint    NOT NULL CHECK (score BETWEEN 1 AND 10),
-    content           text        CHECK (content IS NULL OR length(content) BETWEEN 1 AND 10000),
+    content           text        CHECK (content IS NULL OR length(content) <= 10000),
     contains_spoilers boolean     NOT NULL DEFAULT false,
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),

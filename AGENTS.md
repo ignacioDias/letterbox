@@ -37,6 +37,6 @@
 ## Current gaps
 
 - Follow/unfollow, blocks, and follower/following lists and counts are implemented.
-- Review listing for a user (`GET /users/username/{username}/reviews`) is implemented with pagination and tests. `POST`/`PUT`/`DELETE /movies/{movie_id}/reviews` and `GET /reviews/following` are registered but their handlers are empty (they currently return `200` with no body); the service methods are stubs too.
+- Review listing (per user, following feed, and per movie) and review creation (`POST /movies/{movie_id}/reviews`) are implemented with pagination/validation and tests. `PUT`/`DELETE /movies/{movie_id}/reviews` are registered but their handlers and service methods are stubs (they currently return `200` with no body).
 - `MovieRepository` is an empty interface stub. The `movies` table exists as a local TMDB cache, and `TMDB_API_KEY` is in `.env.example` but unused.
 - Tables for reviews, comments, and reactions exist; comments and reactions have no code.

@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
+	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"log"
 	"net/http"
-	"strconv"
 )
 
 type ReviewHandler interface {
@@ -21,6 +22,12 @@ type ReviewHandler interface {
 
 type reviewHandler struct {
 	reviewService services.ReviewService
+}
+
+type ReviewReq struct {
+	Score            int16  `json:"score"`
+	Content          string `json:"content"`
+	ContainsSpoilers bool   `json:"contains_spoilers"`
 }
 
 func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewHandler {
@@ -62,9 +69,7 @@ func (h *reviewHandler) GetReviewsFromUserByUsername(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, reviews)
 
 }
-func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
-func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
-func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
+
 func (h *reviewHandler) GetReviewsFromFollowingUsers(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
@@ -84,13 +89,9 @@ func (h *reviewHandler) GetReviewsFromFollowingUsers(w http.ResponseWriter, r *h
 	}
 	writeJSON(w, http.StatusOK, reviews)
 }
-func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) { //TODO: improve with TMDB
-	movieID, err := strconv.ParseInt(r.PathValue("movie_id"), 10, 32)
+func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getMovieIDFromRequest(r)
 	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
-		return
-	}
-	if movieID <= 0 {
 		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
 		return
 	}
@@ -107,3 +108,44 @@ func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.R
 	}
 	writeJSON(w, http.StatusOK, reviews)
 }
+
+func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getMovieIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req ReviewReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	review := domains.NewReview(userID, movieID, req.Score, req.Content, req.ContainsSpoilers)
+	review, err = h.reviewService.CreateReviewForMovieByID(r.Context(), review)
+	if errors.Is(err, services.ErrInvalidScore) {
+		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrReviewAlreadyExists) {
+		http.Error(w, "Review already exists", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, repositories.ErrMovieNotFound) {
+		http.Error(w, "Movie not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("create review for movie by ID: %v", err)
+		http.Error(w, "Failed to create review", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, review)
+}
+
+func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
+func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}

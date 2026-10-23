@@ -16,6 +16,8 @@ var (
 	ErrAlreadyBlocked        = errors.New("already blocked this user")
 	ErrNotBlocked            = errors.New("not blocking this user")
 	ErrUserBlocked           = errors.New("user is blocked")
+	ErrReviewAlreadyExists   = errors.New("review already exists")
+	ErrMovieNotFound         = errors.New("movie not found")
 )
 
 func isUniqueViolation(err error) bool {

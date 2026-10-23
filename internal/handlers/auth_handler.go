@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
@@ -41,7 +42,8 @@ func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositori
 
 func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var registerReq RegisterUserRequest
-	if ok := decodeJSON(w, r, &registerReq); !ok {
+	if err := json.NewDecoder(r.Body).Decode(&registerReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
@@ -62,7 +64,8 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginUserRequest
-	if ok := decodeJSON(w, r, &loginReq); !ok {
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	user, err := a.authServices.LoginUser(r.Context(), loginReq.EmailOrUsername, loginReq.Password)

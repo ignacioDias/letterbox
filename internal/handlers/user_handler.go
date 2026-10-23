@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
@@ -112,7 +113,8 @@ func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var updateReq UpdateUserRequest
-	if !decodeJSON(w, r, &updateReq) {
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	if err := h.userServices.UpdateUserByID(r.Context(), userID, updateReq.Username, updateReq.Email, updateReq.Country, updateReq.ProfilePicture); err != nil {
@@ -146,7 +148,8 @@ func (h *userHandler) UpdateCurrentUserPassword(w http.ResponseWriter, r *http.R
 		return
 	}
 	var updatePasswordReq UpdateUserPasswordRequest
-	if !decodeJSON(w, r, &updatePasswordReq) {
+	if err := json.NewDecoder(r.Body).Decode(&updatePasswordReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	err := h.userServices.UpdateUserPasswordByID(r.Context(), userID, sessionID, updatePasswordReq.CurrentPassword, updatePasswordReq.NewPassword)

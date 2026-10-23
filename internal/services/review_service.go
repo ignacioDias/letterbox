@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
@@ -9,10 +10,10 @@ import (
 
 type ReviewService interface {
 	GetReviewsFromUserByUsername(ctx context.Context, userID int64, username string, limit, offset int) ([]*domains.Review, error)
-	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) error
-	GetReviewsFromMovieByID(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error)
+	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
+	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	UpdateReviewForMovieByID(ctx context.Context, review *domains.Review) error
-	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int64) error
+	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 }
 
@@ -22,6 +23,8 @@ type reviewService struct {
 	blockRepository  repositories.BlockRepository
 	movieRepository  repositories.MovieRepository
 }
+
+var ErrInvalidScore = errors.New("invalid score: must be between 1 and 10")
 
 func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewService {
 	return &reviewService{
@@ -52,8 +55,11 @@ func (s *reviewService) GetReviewsFromUserByUsername(ctx context.Context, userID
 	return s.reviewRepository.GetReviewsFromUserByUserID(ctx, reviewerID, limit, offset)
 }
 
-func (s *reviewService) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) error {
-	return nil
+func (s *reviewService) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {
+	if review.Score < 1 || review.Score > 10 {
+		return nil, ErrInvalidScore
+	}
+	return s.reviewRepository.CreateReviewForMovieByID(ctx, review)
 }
 
 func (s *reviewService) UpdateReviewForMovieByID(ctx context.Context, review *domains.Review) error {
@@ -61,7 +67,7 @@ func (s *reviewService) UpdateReviewForMovieByID(ctx context.Context, review *do
 	return nil
 }
 
-func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int64) error {
+func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error {
 	// return s.reviewRepository.DeleteReviewForMovieByID(ctx, userID, movieID)
 	return nil
 }
@@ -70,6 +76,6 @@ func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID
 	return s.reviewRepository.GetReviewsFromFollowingUsers(ctx, userID, limit, offset)
 }
 
-func (s *reviewService) GetReviewsFromMovieByID(ctx context.Context, movieID int64, limit, offset int) ([]*domains.Review, error) {
+func (s *reviewService) GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error) {
 	return s.reviewRepository.GetReviewsFromMovieByID(ctx, movieID, limit, offset)
 }
