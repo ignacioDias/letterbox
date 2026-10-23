@@ -183,6 +183,7 @@ func TestUpdateCurrentUserHandler(t *testing.T) {
 	}{
 		{name: "success", body: `{"country":"UY"}`, wantStatus: http.StatusNoContent},
 		{name: "invalid payload", body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "body too large", body: `{"country":"` + strings.Repeat("a", userBodyLimit) + `"}`, wantStatus: http.StatusRequestEntityTooLarge},
 		{name: "invalid username", body: `{"username":"a"}`, wantStatus: http.StatusBadRequest},
 		{name: "invalid country", body: `{"country":"ARG"}`, wantStatus: http.StatusBadRequest},
 		{name: "username conflict", body: `{"username":"grace"}`, updateErr: repositories.ErrUsernameAlreadyExists, wantStatus: http.StatusConflict},
@@ -234,6 +235,7 @@ func TestUpdateCurrentUserPasswordHandler(t *testing.T) {
 	}{
 		{name: "success", body: `{"currentPassword":"oldpassword","newPassword":"newpassword"}`, hash: string(currentHash), wantStatus: http.StatusNoContent},
 		{name: "invalid payload", body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "body too large", body: `{"currentPassword":"` + strings.Repeat("a", passwordBodyLimit) + `"}`, hash: string(currentHash), wantStatus: http.StatusRequestEntityTooLarge},
 		{name: "invalid new password", body: `{"currentPassword":"oldpassword","newPassword":"short"}`, hash: string(currentHash), wantStatus: http.StatusBadRequest},
 		{name: "wrong current password", body: `{"currentPassword":"wrongpassword","newPassword":"newpassword"}`, hash: string(currentHash), wantStatus: http.StatusUnauthorized},
 		{name: "user not found", body: `{"currentPassword":"oldpassword","newPassword":"newpassword"}`, hashErr: repositories.ErrUserNotFound, wantStatus: http.StatusNotFound},

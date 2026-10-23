@@ -105,11 +105,26 @@ from every user the authenticated user follows. If a block exists in either dire
 that are not positive 32-bit integers.
 
 `POST /movies/{movie_id}/reviews` creates a review for the authenticated user. `score`
-is required and must be between 1 and 10; `content` may be empty; `contains_spoilers`
-defaults to `false`. It returns `201 Created` with the review, `400` for invalid input,
-`404` if the movie is not in the local cache, and `409` if the user already reviewed
-that movie. The update and delete routes are registered but their handlers are empty,
-so they currently return `200 OK` with no body.
+is required and must be between 1 and 10; `content` may be empty and is capped at
+10,000 characters; `contains_spoilers` defaults to `false`. It returns `201 Created`
+with the review, `400` for invalid input, and `409` if the user already reviewed that
+movie. The movie must already exist in the local `movies` cache; missing movies
+currently surface as `500` because foreign-key violations are not mapped. The update
+and delete routes are registered but their handlers are empty, so they currently return
+`200 OK` with no body.
+
+### Request body limits
+
+JSON request bodies are capped and oversized bodies return `413 Request Entity Too
+Large`; malformed or non-JSON bodies return `400 Bad Request`.
+
+| Endpoint | Limit |
+| --- | --- |
+| `POST /auth/register` | 1 KiB |
+| `POST /auth/login` | 1 KiB |
+| `PUT /users/me` | 4 KiB |
+| `PUT /users/me/password` | 1 KiB |
+| `POST /movies/{movie_id}/reviews` | 64 KiB |
 
 ### Examples
 
@@ -169,6 +184,14 @@ Read reviews from users you follow:
 curl -i -b cookies.txt "http://localhost:8080/api/v1/reviews/following?limit=10&offset=0"
 ```
 
+Create a review (the movie must already be in the local cache):
+
+```bash
+curl -i -b cookies.txt -X POST http://localhost:8080/api/v1/movies/550/reviews \
+  -H 'Content-Type: application/json' \
+  -d '{"score":8,"content":"Great movie","contains_spoilers":false}'
+```
+
 ## Follows and blocks
 
 Following yourself is rejected with `400`; following the same user twice returns `409`.
@@ -209,9 +232,10 @@ go test ./...
 go test -race ./...
 ```
 
-Unit tests cover services (including review listing), handlers, middleware, and
-repository helpers, and use fakes from `internal/testutil`. Repository integration tests
-are not included because they require a running PostgreSQL instance.
+Unit tests cover services (including review listing and creation), handlers (including
+JSON body limits), middleware, and repository helpers, and use fakes from
+`internal/testutil`. Repository integration tests are not included because they require
+a running PostgreSQL instance.
 
 ## Notes and limitations
 

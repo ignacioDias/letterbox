@@ -6,6 +6,7 @@ import (
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
+	"unicode/utf8"
 )
 
 type ReviewService interface {
@@ -25,6 +26,7 @@ type reviewService struct {
 }
 
 var ErrInvalidScore = errors.New("invalid score: must be between 1 and 10")
+var ErrReviewContentTooLong = errors.New("review content is too long: must be less than 10000 characters")
 
 func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewService {
 	return &reviewService{
@@ -58,6 +60,9 @@ func (s *reviewService) GetReviewsFromUserByUsername(ctx context.Context, userID
 func (s *reviewService) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {
 	if review.Score < 1 || review.Score > 10 {
 		return nil, ErrInvalidScore
+	}
+	if utf8.RuneCountInString(review.Content) > 10000 {
+		return nil, ErrReviewContentTooLong
 	}
 	return s.reviewRepository.CreateReviewForMovieByID(ctx, review)
 }

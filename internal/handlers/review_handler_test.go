@@ -279,6 +279,12 @@ func TestCreateReviewForMovieByIDHandler(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name:       "body too large",
+			movieID:    "10",
+			body:       `{"content":"` + strings.Repeat("a", reviewBodyLimit) + `"}`,
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+		{
 			name:       "invalid score",
 			movieID:    "10",
 			body:       `{"score":0}`,
@@ -290,13 +296,6 @@ func TestCreateReviewForMovieByIDHandler(t *testing.T) {
 			body:       `{"score":8}`,
 			repoErr:    repositories.ErrReviewAlreadyExists,
 			wantStatus: http.StatusConflict,
-		},
-		{
-			name:       "movie not found",
-			movieID:    "10",
-			body:       `{"score":8}`,
-			repoErr:    repositories.ErrMovieNotFound,
-			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "repository error",

@@ -37,6 +37,11 @@ func TestRegisterUserHandler(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name:       "body too large",
+			body:       `{"username":"` + strings.Repeat("a", authBodyLimit) + `"}`,
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+		{
 			name:       "invalid country",
 			body:       `{"username":"ada","email":"ada@example.com","password":"secret123","country":"ARG"}`,
 			wantStatus: http.StatusBadRequest,
@@ -126,6 +131,11 @@ func TestLoginUserHandler(t *testing.T) {
 			name:       "invalid payload",
 			body:       `{`,
 			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "body too large",
+			body:       `{"emailOrUsername":"` + strings.Repeat("a", authBodyLimit) + `"}`,
+			wantStatus: http.StatusRequestEntityTooLarge,
 		},
 		{
 			name:       "wrong password",

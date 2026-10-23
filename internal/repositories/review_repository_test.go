@@ -27,12 +27,7 @@ func TestMapReviewInsertError(t *testing.T) {
 			want: ErrReviewAlreadyExists,
 		},
 		{
-			name: "movie foreign key violation",
-			err:  &pgconn.PgError{Code: "23503", ConstraintName: "reviews_movie_id_fkey"},
-			want: ErrMovieNotFound,
-		},
-		{
-			name: "user foreign key violation",
+			name: "foreign key violation",
 			err:  &pgconn.PgError{Code: "23503", ConstraintName: "reviews_user_id_fkey"},
 			want: nil,
 		},

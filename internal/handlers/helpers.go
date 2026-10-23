@@ -10,12 +10,33 @@ import (
 	"time"
 )
 
+const (
+	authBodyLimit     = 1 << 10  // 1 KiB
+	passwordBodyLimit = 1 << 10  // 1 KiB
+	userBodyLimit     = 4 << 10  // 4 KiB
+	reviewBodyLimit   = 64 << 10 // 64 KiB
+)
+
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		log.Printf("encode JSON response: %v", err)
 	}
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return false
+		}
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return false
+	}
+	return true
 }
 
 func requireSessionID(w http.ResponseWriter, r *http.Request) (string, bool) {

@@ -29,3 +29,48 @@ func authenticatedRequestWithBody(t *testing.T, handler http.HandlerFunc, body s
 	h(rec, req)
 	return rec
 }
+
+func TestDecodeJSON(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		maxBytes   int64
+		wantOK     bool
+		wantStatus int
+	}{
+		{
+			name:       "valid",
+			body:       `{"score":8}`,
+			maxBytes:   1 << 10,
+			wantOK:     true,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "malformed",
+			body:       `{`,
+			maxBytes:   1 << 10,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "too large",
+			body:       `{"score":` + strings.Repeat("1", 1<<10) + `}`,
+			maxBytes:   1 << 10,
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dst ReviewReq
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
+			rec := httptest.NewRecorder()
+
+			if got := decodeJSON(rec, req, &dst, tt.maxBytes); got != tt.wantOK {
+				t.Fatalf("decodeJSON() = %v; want %v", got, tt.wantOK)
+			}
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d", rec.Code, tt.wantStatus)
+			}
+		})
+	}
+}

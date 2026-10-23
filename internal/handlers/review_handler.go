@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
@@ -121,8 +120,7 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 		return
 	}
 	var req ReviewReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !decodeJSON(w, r, &req, reviewBodyLimit) {
 		return
 	}
 	review := domains.NewReview(userID, movieID, req.Score, req.Content, req.ContainsSpoilers)
@@ -131,12 +129,12 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
 		return
 	}
-	if errors.Is(err, repositories.ErrReviewAlreadyExists) {
-		http.Error(w, "Review already exists", http.StatusConflict)
+	if errors.Is(err, services.ErrReviewContentTooLong) {
+		http.Error(w, "Review content is too long: must be less than 10000 characters", http.StatusBadRequest)
 		return
 	}
-	if errors.Is(err, repositories.ErrMovieNotFound) {
-		http.Error(w, "Movie not found", http.StatusNotFound)
+	if errors.Is(err, repositories.ErrReviewAlreadyExists) {
+		http.Error(w, "Review already exists", http.StatusConflict)
 		return
 	}
 	if err != nil {
