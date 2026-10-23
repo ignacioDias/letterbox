@@ -2,10 +2,9 @@
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
 with cookie-based sessions, manage their profile, follow other users, block or
-unblock them, list the reviews a user has written, read a feed of reviews from the
-users they follow, and list the reviews for a movie. The data model is prepared for
-the rest of the review flow, comments, and reactions; those endpoints are not
-implemented yet.
+unblock them, and create, update, delete, and list reviews. Reviews can be listed per
+user, per movie, and as a feed of the users they follow. The data model is prepared
+for comments and reactions; those endpoints are not implemented yet.
 
 ## Tech stack
 
@@ -89,15 +88,15 @@ Base path: `/api/v1`
 | `GET` | `/reviews/following` | Yes | Implemented |
 | `GET` | `/movies/{movie_id}/reviews` | No | Implemented |
 | `POST` | `/movies/{movie_id}/reviews` | Yes | Implemented |
-| `PUT` | `/movies/{movie_id}/reviews` | Yes | Stub |
-| `DELETE` | `/movies/{movie_id}/reviews` | Yes | Stub |
+| `PATCH` | `/movies/{movie_id}/reviews` | Yes | Implemented |
+| `DELETE` | `/movies/{movie_id}/reviews` | Yes | Implemented |
 
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
 accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
 `{"count": N}`. Follow and block actions return `204 No Content` on success.
 
 Reviews are returned newest-updated first as a JSON array of review objects (`id`,
-`user_id`, `movie_id`, `score`, `content`, `contains_spoilers`, `created_at`,
+`user_id`, `movie_id`, `score`, `content`, `containsSpoilers`, `created_at`,
 `updated_at`), with `id` as the tiebreaker. `GET /reviews/following` returns reviews
 from every user the authenticated user follows. If a block exists in either direction,
 `GET /users/username/{username}/reviews` returns `403 Forbidden`.
@@ -106,12 +105,21 @@ that are not positive 32-bit integers.
 
 `POST /movies/{movie_id}/reviews` creates a review for the authenticated user. `score`
 is required and must be between 1 and 10; `content` may be empty and is capped at
-10,000 characters; `contains_spoilers` defaults to `false`. It returns `201 Created`
+10,000 characters; `containsSpoilers` defaults to `false`. It returns `201 Created`
 with the review, `400` for invalid input, and `409` if the user already reviewed that
 movie. The movie must already exist in the local `movies` cache; missing movies
-currently surface as `500` because foreign-key violations are not mapped. The update
-and delete routes are registered but their handlers are empty, so they currently return
-`200 OK` with no body.
+currently surface as `500` because foreign-key violations are not mapped.
+
+`PATCH /movies/{movie_id}/reviews` partially updates the authenticated user's review.
+Any subset of `score`, `content`, and `containsSpoilers` may be sent, but at least one
+is required; omitted fields keep their current values. A successful update returns
+`200 OK` with the review and a refreshed `updated_at`. It returns `400` for invalid
+input or an empty field set, and `404` if the user has not reviewed that movie.
+
+`DELETE /movies/{movie_id}/reviews` deletes the authenticated user's review and
+returns `204 No Content`. It returns `404` if the user has not reviewed that movie.
+The movie ID is validated on both routes and returns `400` when it is not a positive
+32-bit integer.
 
 ### Request body limits
 
@@ -125,6 +133,7 @@ Large`; malformed or non-JSON bodies return `400 Bad Request`.
 | `PUT /users/me` | 4 KiB |
 | `PUT /users/me/password` | 1 KiB |
 | `POST /movies/{movie_id}/reviews` | 64 KiB |
+| `PATCH /movies/{movie_id}/reviews` | 64 KiB |
 
 ### Examples
 
@@ -189,7 +198,21 @@ Create a review (the movie must already be in the local cache):
 ```bash
 curl -i -b cookies.txt -X POST http://localhost:8080/api/v1/movies/550/reviews \
   -H 'Content-Type: application/json' \
-  -d '{"score":8,"content":"Great movie","contains_spoilers":false}'
+  -d '{"score":8,"content":"Great movie","containsSpoilers":false}'
+```
+
+Partially update that review (only the fields sent are changed):
+
+```bash
+curl -i -b cookies.txt -X PATCH http://localhost:8080/api/v1/movies/550/reviews \
+  -H 'Content-Type: application/json' \
+  -d '{"score":9,"containsSpoilers":true}'
+```
+
+Delete that review:
+
+```bash
+curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/movies/550/reviews
 ```
 
 ## Follows and blocks
@@ -232,17 +255,16 @@ go test ./...
 go test -race ./...
 ```
 
-Unit tests cover services (including review listing and creation), handlers (including
-JSON body limits), middleware, and repository helpers, and use fakes from
-`internal/testutil`. Repository integration tests are not included because they require
-a running PostgreSQL instance.
+Unit tests cover services (including review listing, creation, update, and deletion),
+handlers (including JSON body limits), middleware, and repository helpers, and use fakes
+from `internal/testutil`. Repository integration tests are not included because they
+require a running PostgreSQL instance.
 
 ## Notes and limitations
 
-- Review listing (per user, following feed, and per movie) and review creation are
-  implemented. Updating and deleting reviews are stubs, and `MovieRepository` has no
-  methods. Creating a review requires the movie to already exist in the local `movies`
-  cache.
+- Review listing (per user, following feed, and per movie), creation, partial updates,
+  and deletion are implemented. `MovieRepository` has no methods, so creating a review
+  requires the movie to already exist in the local `movies` cache.
 - `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
 - Tables for movies, comments, and reactions exist; comments and reactions have no code.
 - Blocks prevent follows, remove existing follow relationships, and hide reviews in both
