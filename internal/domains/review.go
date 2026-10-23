@@ -8,7 +8,7 @@ type Review struct {
 	MovieID          int32     `json:"movie_id" db:"movie_id"`
 	Score            int16     `json:"score" db:"score"`
 	Content          string    `json:"content" db:"content"`
-	ContainsSpoilers bool      `json:"contains_spoilers" db:"contains_spoilers"`
+	ContainsSpoilers bool      `json:"containsSpoilers" db:"contains_spoilers"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
 }

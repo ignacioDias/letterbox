@@ -26,7 +26,7 @@ type reviewHandler struct {
 type ReviewReq struct {
 	Score            int16  `json:"score"`
 	Content          string `json:"content"`
-	ContainsSpoilers bool   `json:"contains_spoilers"`
+	ContainsSpoilers bool   `json:"containsSpoilers"`
 }
 
 func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewHandler {
@@ -146,4 +146,26 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 }
 
 func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
-func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
+func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getMovieIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	err = h.reviewService.DeleteReviewForMovieByID(r.Context(), userID, movieID)
+	if errors.Is(err, repositories.ErrReviewNotFound) {
+		http.Error(w, "Review not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("delete review for movie by ID: %v", err)
+		http.Error(w, "Failed to delete review", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

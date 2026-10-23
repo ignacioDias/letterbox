@@ -309,3 +309,72 @@ func TestCreateReviewForMovieByID(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteReviewForMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name        string
+		userID      int64
+		movieID     int32
+		repoErr     error
+		wantErr     error
+		wantRepoRun bool
+	}{
+		{
+			name:        "success",
+			userID:      42,
+			movieID:     10,
+			wantRepoRun: true,
+		},
+		{
+			name:        "review not found",
+			userID:      42,
+			movieID:     10,
+			repoErr:     repositories.ErrReviewNotFound,
+			wantErr:     repositories.ErrReviewNotFound,
+			wantRepoRun: true,
+		},
+		{
+			name:        "repository error",
+			userID:      42,
+			movieID:     10,
+			repoErr:     genericErr,
+			wantErr:     genericErr,
+			wantRepoRun: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotUserID int64
+			var gotMovieID int32
+			reviewRepo := &testutil.FakeReviewRepository{
+				DeleteReviewForMovieByIDFunc: func(_ context.Context, userID int64, movieID int32) error {
+					if !tt.wantRepoRun {
+						t.Fatalf("DeleteReviewForMovieByID() called; want no repository call")
+					}
+					gotUserID, gotMovieID = userID, movieID
+					return tt.repoErr
+				},
+			}
+
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			err := svc.DeleteReviewForMovieByID(context.Background(), tt.userID, tt.movieID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("DeleteReviewForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteReviewForMovieByID() error = %v; want nil", err)
+			}
+			if gotUserID != tt.userID || gotMovieID != tt.movieID {
+				t.Fatalf("DeleteReviewForMovieByID() called with (%d, %d); want (%d, %d)",
+					gotUserID, gotMovieID, tt.userID, tt.movieID)
+			}
+		})
+	}
+}

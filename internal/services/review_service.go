@@ -73,8 +73,7 @@ func (s *reviewService) UpdateReviewForMovieByID(ctx context.Context, review *do
 }
 
 func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error {
-	// return s.reviewRepository.DeleteReviewForMovieByID(ctx, userID, movieID)
-	return nil
+	return s.reviewRepository.DeleteReviewForMovieByID(ctx, userID, movieID)
 }
 
 func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {

@@ -14,6 +14,7 @@ type ReviewRepository interface {
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
+	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error
 }
 
 type reviewRepository struct {
@@ -98,4 +99,23 @@ func mapReviewInsertError(err error) error {
 		return ErrReviewAlreadyExists
 	}
 	return err
+}
+
+func (r *reviewRepository) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error {
+	query := `
+		DELETE FROM reviews
+		WHERE user_id = $1 AND movie_id = $2
+	`
+	result, err := r.db.ExecContext(ctx, query, userID, movieID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrReviewNotFound
+	}
+	return nil
 }
