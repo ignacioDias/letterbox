@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -31,20 +32,6 @@ type LoginUserRequest struct {
 	Password        string `json:"password"`
 }
 
-var registerUserErrors = []errorMapping{
-	{err: services.ErrInvalidUsername, status: http.StatusBadRequest},
-	{err: services.ErrInvalidEmail, status: http.StatusBadRequest},
-	{err: services.ErrInvalidPassword, status: http.StatusBadRequest},
-	{err: services.ErrInvalidCountry, status: http.StatusBadRequest},
-	{err: repositories.ErrUsernameAlreadyExists, status: http.StatusConflict},
-	{err: repositories.ErrEmailAlreadyExists, status: http.StatusConflict},
-}
-
-var loginUserErrors = []errorMapping{
-	{err: services.ErrInvalidCredentials, status: http.StatusUnauthorized, message: "Invalid credentials"},
-	{err: repositories.ErrUserNotFound, status: http.StatusUnauthorized, message: "Invalid credentials"},
-}
-
 func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthHandler {
 	return &authHandler{
 		authServices: services.NewAuthService(userRepo, sessionRepo),
@@ -54,12 +41,20 @@ func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositori
 
 func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var registerReq RegisterUserRequest
-	if !decodeJSON(w, r, &registerReq) {
+	if ok := decodeJSON(w, r, &registerReq); !ok {
 		return
 	}
 	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
+	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) || errors.Is(err, services.ErrInvalidCountry) {
+		http.Error(w, "Invalid user data", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUsernameAlreadyExists) || errors.Is(err, repositories.ErrEmailAlreadyExists) {
+		http.Error(w, "Username or email already exists", http.StatusConflict)
+		return
+	}
 	if err != nil {
-		writeError(w, err, "register user", "Error creating the user", registerUserErrors...)
+		http.Error(w, "Error creating the user", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
@@ -67,17 +62,21 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginUserRequest
-	if !decodeJSON(w, r, &loginReq) {
+	if ok := decodeJSON(w, r, &loginReq); !ok {
 		return
 	}
 	user, err := a.authServices.LoginUser(r.Context(), loginReq.EmailOrUsername, loginReq.Password)
+	if errors.Is(err, services.ErrInvalidCredentials) || errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
 	if err != nil {
-		writeError(w, err, "login user", "Error logging in the user", loginUserErrors...)
+		http.Error(w, "Error logging in the user", http.StatusInternalServerError)
 		return
 	}
 	session, err := a.authServices.CreateSession(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, err, "login user", "Error creating the session")
+		http.Error(w, "Error creating the session", http.StatusInternalServerError)
 		return
 	}
 
@@ -99,7 +98,7 @@ func (a *authHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.authServices.DeleteSession(r.Context(), sessionID); err != nil {
-		writeError(w, err, "logout user", "Error logging out the user")
+		http.Error(w, "Error logging out the user", http.StatusInternalServerError)
 		return
 	}
 	clearSessionCookie(w, a.secureCookie)

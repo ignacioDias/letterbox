@@ -4,38 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"letterbox/internal/middleware"
-	"letterbox/internal/repositories"
-	"letterbox/internal/services"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
-
-type errorMapping struct {
-	err     error
-	status  int
-	message string
-}
-
-var (
-	invalidUsernameError = errorMapping{err: services.ErrInvalidUsername, status: http.StatusBadRequest, message: "Invalid username"}
-	userNotFoundError    = errorMapping{err: repositories.ErrUserNotFound, status: http.StatusNotFound, message: "User not found"}
-)
-
-func writeError(w http.ResponseWriter, err error, logContext, fallback string, mappings ...errorMapping) {
-	for _, mapping := range mappings {
-		if errors.Is(err, mapping.err) {
-			message := mapping.message
-			if message == "" {
-				message = err.Error()
-			}
-			http.Error(w, message, mapping.status)
-			return
-		}
-	}
-	log.Printf("%s: %v", logContext, err)
-	http.Error(w, fallback, http.StatusInternalServerError)
-}
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -51,15 +24,6 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
-}
-
-func requireUserID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	userID, ok := middleware.GetUserID(r)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return 0, false
-	}
-	return userID, true
 }
 
 func requireSessionID(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -82,4 +46,24 @@ func clearSessionCookie(w http.ResponseWriter, secure bool) {
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
 	})
+}
+
+func parsePagination(r *http.Request) (int, int, error) {
+	limit := defaultListLimit
+	offset := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > maxListLimit {
+			return 0, 0, errors.New("invalid limit")
+		}
+		limit = value
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
+			return 0, 0, errors.New("invalid offset")
+		}
+		offset = value
+	}
+	return limit, offset, nil
 }

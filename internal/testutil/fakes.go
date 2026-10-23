@@ -121,6 +121,16 @@ func (f *FakeFollowRepository) FollowUser(ctx context.Context, userIDFollower, u
 	return f.FollowUserFunc(ctx, userIDFollower, userIDFollowing)
 }
 
+type FakeReviewRepository struct {
+	repositories.ReviewRepository
+
+	GetReviewsFromUserByUserIDFunc func(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
+}
+
+func (f *FakeReviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
+	return f.GetReviewsFromUserByUserIDFunc(ctx, userID, limit, offset)
+}
+
 type FakeBlockRepository struct {
 	repositories.BlockRepository
 

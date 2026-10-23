@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"errors"
+	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
+	"log"
 	"net/http"
 )
 
@@ -15,19 +18,6 @@ type blockHandler struct {
 	blockServices services.BlockService
 }
 
-var blockUserErrors = []errorMapping{
-	invalidUsernameError,
-	userNotFoundError,
-	{err: services.ErrCannotBlockSelf, status: http.StatusBadRequest, message: "Cannot block yourself"},
-	{err: repositories.ErrAlreadyBlocked, status: http.StatusConflict, message: "Already blocking this user"},
-}
-
-var unblockUserErrors = []errorMapping{
-	invalidUsernameError,
-	userNotFoundError,
-	{err: repositories.ErrNotBlocked, status: http.StatusConflict, message: "Not blocking this user"},
-}
-
 func NewBlockHandler(blockRepository repositories.BlockRepository, userRepository repositories.UserRepository) BlockHandler {
 	return &blockHandler{
 		blockServices: services.NewBlockService(blockRepository, userRepository),
@@ -35,28 +25,60 @@ func NewBlockHandler(blockRepository repositories.BlockRepository, userRepositor
 }
 
 func (h *blockHandler) BlockUserByUsername(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
+	userID, ok := middleware.GetUserID(r)
 	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	username := r.PathValue("username")
 	err := h.blockServices.BlockUserByUsername(r.Context(), userID, username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, services.ErrCannotBlockSelf) {
+		http.Error(w, "Cannot block yourself", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrAlreadyBlocked) {
+		http.Error(w, "Already blocking this user", http.StatusConflict)
+		return
+	}
 	if err != nil {
-		writeError(w, err, "block user by username", "Error blocking user", blockUserErrors...)
+		log.Printf("block user by username: %v", err)
+		http.Error(w, "Error blocking user", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *blockHandler) UnblockUserByUsername(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
+	userID, ok := middleware.GetUserID(r)
 	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	username := r.PathValue("username")
 	err := h.blockServices.UnblockUserByUsername(r.Context(), userID, username)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, repositories.ErrNotBlocked) {
+		http.Error(w, "Not blocking this user", http.StatusConflict)
+		return
+	}
 	if err != nil {
-		writeError(w, err, "unblock user by username", "Error unblocking user", unblockUserErrors...)
+		log.Printf("unblock user by username: %v", err)
+		http.Error(w, "Error unblocking user", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
