@@ -1,8 +1,10 @@
 # Letterbox
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
-with cookie-based sessions, manage their profile, follow other users, and block or
-unblock them. The data model is already prepared for reviews, comments, and reactions.
+with cookie-based sessions, manage their profile, follow other users, block or
+unblock them, and list the reviews a user has written. The data model is prepared for
+the rest of the review flow, comments, and reactions; those endpoints are not
+implemented yet.
 
 ## Tech stack
 
@@ -18,18 +20,21 @@ unblock them. The data model is already prepared for reviews, comments, and reac
 cmd/letterbox/          Application entry point
 internal/
   database/             Connection wiring, schema creation
-  domains/              Domain models (User, Session, PublicUser)
+  domains/              Domain models (User, Session, Review, PublicUser)
   handlers/             HTTP handlers
   middleware/           Authentication and rate limiting
   repositories/         SQL queries
   router/               Route definitions
   server/               HTTP server, timeouts, graceful shutdown
   services/             Business logic and validation
+  testutil/             Shared fakes for unit tests
 ```
 
 Requests flow through `router -> handler -> service -> repository`. Each domain has its
 own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
-`BlockRepository`) so SQL stays out of handlers and services.
+`BlockRepository`, `ReviewRepository`, `MovieRepository`) so SQL stays out of handlers
+and services. `MovieRepository` is currently an empty stub; movies are stored in a
+local `movies` table keyed by TMDB id, and no TMDB client exists yet.
 
 ## Getting started
 
@@ -55,6 +60,7 @@ automatically on startup; there is no separate migration step.
 | `POSTGRES_PASSWORD` | `letterbox` | Postgres password for the Compose container |
 | `POSTGRES_DB` | `letterbox` | Postgres database name |
 | `POSTGRES_PORT` | `5433` | Host port mapped to the container |
+| `TMDB_API_KEY` | placeholder | Reserved for future TMDB integration; not read yet |
 
 ## API
 
@@ -78,10 +84,20 @@ Base path: `/api/v1`
 | `DELETE` | `/users/username/{username}/block` | Yes | Implemented |
 | `GET` | `/users/username/{username}/followers/count` | No | Implemented |
 | `GET` | `/users/username/{username}/following/count` | No | Implemented |
+| `GET` | `/users/username/{username}/reviews` | No | Implemented |
+| `POST` | `/movies/{movie_id}/reviews` | Yes | Stub |
+| `PUT` | `/movies/{movie_id}/reviews` | Yes | Stub |
+| `DELETE` | `/movies/{movie_id}/reviews` | Yes | Stub |
+| `GET` | `/reviews/following` | Yes | Stub |
 
-Follower/following lists accept `limit` (1-100, default 20) and `offset` (default 0).
-Count endpoints return `{"count": N}`.
+Follower/following lists and a user's reviews accept `limit` (1-100, default 20) and
+`offset` (default 0). Count endpoints return `{"count": N}`.
 Follow and block actions return `204 No Content` on success.
+
+User reviews are returned newest-updated first as a JSON array of review objects
+(`id`, `user_id`, `movie_id`, `score`, `content`, `contains_spoilers`, `created_at`,
+`updated_at`). The stub routes are registered but their handlers are empty, so they
+currently return `200 OK` with no body.
 
 ### Examples
 
@@ -129,6 +145,12 @@ curl -i -b cookies.txt -X POST http://localhost:8080/api/v1/users/username/grace
 curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/users/username/grace/block
 ```
 
+List a user's reviews (newest updated first):
+
+```bash
+curl -i "http://localhost:8080/api/v1/users/username/ada/reviews?limit=10&offset=0"
+```
+
 ## Follows and blocks
 
 Following yourself is rejected with `400`; following the same user twice returns `409`.
@@ -164,11 +186,16 @@ go test ./...
 go test -race ./...
 ```
 
-Unit tests cover services, handlers, middleware, and repository helpers. Repository
-integration tests are not included because they require a running PostgreSQL instance.
+Unit tests cover services (including review listing), handlers, middleware, and
+repository helpers, and use fakes from `internal/testutil`. Repository integration tests
+are not included because they require a running PostgreSQL instance.
 
 ## Notes and limitations
 
+- Review listing is read-only. Creating, updating, deleting, and reading reviews from
+  followed users are stubs, and `MovieRepository` has no methods.
+- `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
+- Tables for movies, comments, and reactions exist; comments and reactions have no code.
 - Blocks currently prevent follows and remove existing follow relationships; they are not
   yet used to hide profiles, lists, reviews, comments, or reactions.
 - There is no lint configuration in the repository yet.

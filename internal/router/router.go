@@ -63,10 +63,10 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	//Review routes
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.reviewHandler.GetReviewsFromUserByUsername)
-	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.reviewHandler.CreateReviewForMovieByID)
-	r.mux.HandleFunc("PUT /api/v1/movies/{movie_id}/reviews", r.reviewHandler.UpdateReviewForMovieByID)
-	r.mux.HandleFunc("DELETE /api/v1/movies/{movie_id}/reviews", r.reviewHandler.DeleteReviewForMovieByID)
-	r.mux.HandleFunc("GET /api/v1/reviews/following", r.reviewHandler.GetReviewsFromFollowingUsers)
+	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.reviewHandler.CreateReviewForMovieByID)   //TODO
+	r.mux.HandleFunc("PUT /api/v1/movies/{movie_id}/reviews", r.reviewHandler.UpdateReviewForMovieByID)    //TODO
+	r.mux.HandleFunc("DELETE /api/v1/movies/{movie_id}/reviews", r.reviewHandler.DeleteReviewForMovieByID) //TODO
+	r.mux.HandleFunc("GET /api/v1/reviews/following", r.reviewHandler.GetReviewsFromFollowingUsers)        //TODO
 
 	return r.mux
 }
