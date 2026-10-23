@@ -2,9 +2,9 @@
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
 with cookie-based sessions, manage their profile, follow other users, block or
-unblock them, and list the reviews a user has written. The data model is prepared for
-the rest of the review flow, comments, and reactions; those endpoints are not
-implemented yet.
+unblock them, list the reviews a user has written, and read a feed of reviews from
+the users they follow. The data model is prepared for the rest of the review flow,
+comments, and reactions; those endpoints are not implemented yet.
 
 ## Tech stack
 
@@ -84,20 +84,24 @@ Base path: `/api/v1`
 | `DELETE` | `/users/username/{username}/block` | Yes | Implemented |
 | `GET` | `/users/username/{username}/followers/count` | No | Implemented |
 | `GET` | `/users/username/{username}/following/count` | No | Implemented |
-| `GET` | `/users/username/{username}/reviews` | No | Implemented |
+| `GET` | `/users/username/{username}/reviews` | Yes | Implemented |
+| `GET` | `/reviews/following` | Yes | Implemented |
+| `GET` | `/movies/{movie_id}/reviews` | No | Stub |
 | `POST` | `/movies/{movie_id}/reviews` | Yes | Stub |
 | `PUT` | `/movies/{movie_id}/reviews` | Yes | Stub |
 | `DELETE` | `/movies/{movie_id}/reviews` | Yes | Stub |
-| `GET` | `/reviews/following` | Yes | Stub |
 
-Follower/following lists and a user's reviews accept `limit` (1-100, default 20) and
-`offset` (default 0). Count endpoints return `{"count": N}`.
+Follower/following lists, a user's reviews, and the following feed accept `limit`
+(1-100, default 20) and `offset` (default 0). Count endpoints return `{"count": N}`.
 Follow and block actions return `204 No Content` on success.
 
-User reviews are returned newest-updated first as a JSON array of review objects
-(`id`, `user_id`, `movie_id`, `score`, `content`, `contains_spoilers`, `created_at`,
-`updated_at`). The stub routes are registered but their handlers are empty, so they
-currently return `200 OK` with no body.
+Reviews are returned newest-updated first as a JSON array of review objects (`id`,
+`user_id`, `movie_id`, `score`, `content`, `contains_spoilers`, `created_at`,
+`updated_at`), with `id` as the tiebreaker. `GET /reviews/following` returns reviews
+from every user the authenticated user follows. If a block exists in either direction,
+`GET /users/username/{username}/reviews` returns `403 Forbidden`. The movie review
+stub routes are registered but their handlers are empty, so they currently return
+`200 OK` with no body.
 
 ### Examples
 
@@ -148,7 +152,13 @@ curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/users/username/gra
 List a user's reviews (newest updated first):
 
 ```bash
-curl -i "http://localhost:8080/api/v1/users/username/ada/reviews?limit=10&offset=0"
+curl -i -b cookies.txt "http://localhost:8080/api/v1/users/username/ada/reviews?limit=10&offset=0"
+```
+
+Read reviews from users you follow:
+
+```bash
+curl -i -b cookies.txt "http://localhost:8080/api/v1/reviews/following?limit=10&offset=0"
 ```
 
 ## Follows and blocks
@@ -161,6 +171,11 @@ creates the block in a single transaction. While a block exists in either direct
 following is rejected with `403 Forbidden`. Blocking yourself returns `400`, blocking an
 already-blocked user returns `409`, and unblocking a user you do not block returns `409`.
 Unblocking does **not** restore previous follow relationships.
+
+Blocks also hide reviews in both directions: neither user can list the other's reviews
+through `GET /users/username/{username}/reviews` (both get `403 Forbidden`). The
+following feed never includes a blocked user because blocking removes the underlying
+follow relationship.
 
 ## Authentication
 
@@ -192,10 +207,11 @@ are not included because they require a running PostgreSQL instance.
 
 ## Notes and limitations
 
-- Review listing is read-only. Creating, updating, deleting, and reading reviews from
-  followed users are stubs, and `MovieRepository` has no methods.
+- Review listing (per user and following feed) is read-only. Creating, updating,
+  deleting, and listing reviews by movie are stubs, and `MovieRepository` has no methods.
 - `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
 - Tables for movies, comments, and reactions exist; comments and reactions have no code.
-- Blocks currently prevent follows and remove existing follow relationships; they are not
-  yet used to hide profiles, lists, reviews, comments, or reactions.
+- Blocks prevent follows, remove existing follow relationships, and hide reviews in both
+  directions; they are not yet used to hide profiles, follower/following lists, comments,
+  or reactions.
 - There is no lint configuration in the repository yet.

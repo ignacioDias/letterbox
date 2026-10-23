@@ -28,7 +28,7 @@ func (r *reviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userI
 		SELECT r.id, r.user_id, r.movie_id, r.score, COALESCE(r.content, '') AS content, r.contains_spoilers, r.created_at, r.updated_at
 		FROM reviews r
 		WHERE r.user_id = $1
-		ORDER BY r.updated_at DESC
+		ORDER BY r.updated_at DESC, r.id DESC
 		LIMIT $2 OFFSET $3
 	`
 	err := r.db.SelectContext(ctx, &reviews, query, userID, limit, offset)
@@ -45,7 +45,7 @@ func (r *reviewRepository) GetReviewsFromFollowingUsers(ctx context.Context, use
 		FROM reviews r
 		JOIN follows f ON r.user_id = f.followed_user_id
 		WHERE f.follower_user_id = $1
-		ORDER BY r.updated_at DESC
+		ORDER BY r.updated_at DESC, r.id DESC
 		LIMIT $2 OFFSET $3
 	`
 	err := r.db.SelectContext(ctx, &reviews, query, userID, limit, offset)
