@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"letterbox/internal/domains"
 
@@ -14,7 +15,8 @@ type ReviewRepository interface {
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
-	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error
+	DeleteReviewForMovie(ctx context.Context, userID int64, movieID int32) error
+	UpdateReviewForMovie(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 }
 
 type reviewRepository struct {
@@ -101,7 +103,7 @@ func mapReviewInsertError(err error) error {
 	return err
 }
 
-func (r *reviewRepository) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error {
+func (r *reviewRepository) DeleteReviewForMovie(ctx context.Context, userID int64, movieID int32) error {
 	query := `
 		DELETE FROM reviews
 		WHERE user_id = $1 AND movie_id = $2
@@ -118,4 +120,25 @@ func (r *reviewRepository) DeleteReviewForMovieByID(ctx context.Context, userID 
 		return ErrReviewNotFound
 	}
 	return nil
+}
+
+func (r *reviewRepository) UpdateReviewForMovie(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
+	review := &domains.Review{}
+	query := `
+		UPDATE reviews
+		SET score = COALESCE($1, score),
+		    content = COALESCE($2, content),
+		    contains_spoilers = COALESCE($3, contains_spoilers),
+		    updated_at = NOW()
+		WHERE user_id = $4 AND movie_id = $5
+		RETURNING id, user_id, movie_id, score, COALESCE(content, '') AS content, contains_spoilers, created_at, updated_at
+	`
+	err := r.db.GetContext(ctx, review, query, score, content, containsSpoilers, userID, movieID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrReviewNotFound
+		}
+		return nil, err
+	}
+	return review, nil
 }

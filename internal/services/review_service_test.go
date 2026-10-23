@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"letterbox/internal/domains"
@@ -350,7 +351,7 @@ func TestDeleteReviewForMovieByID(t *testing.T) {
 			var gotUserID int64
 			var gotMovieID int32
 			reviewRepo := &testutil.FakeReviewRepository{
-				DeleteReviewForMovieByIDFunc: func(_ context.Context, userID int64, movieID int32) error {
+				DeleteReviewForMovieFunc: func(_ context.Context, userID int64, movieID int32) error {
 					if !tt.wantRepoRun {
 						t.Fatalf("DeleteReviewForMovieByID() called; want no repository call")
 					}
@@ -374,6 +375,132 @@ func TestDeleteReviewForMovieByID(t *testing.T) {
 			if gotUserID != tt.userID || gotMovieID != tt.movieID {
 				t.Fatalf("DeleteReviewForMovieByID() called with (%d, %d); want (%d, %d)",
 					gotUserID, gotMovieID, tt.userID, tt.movieID)
+			}
+		})
+	}
+}
+
+func TestUpdateReviewForMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	validScore := int16(9)
+	validContent := "updated"
+	validSpoilers := true
+	invalidScore := int16(11)
+	tooLongContent := strings.Repeat("a", 10001)
+	wantReview := &domains.Review{
+		ID:               1,
+		UserID:           42,
+		MovieID:          10,
+		Score:            validScore,
+		Content:          validContent,
+		ContainsSpoilers: validSpoilers,
+	}
+
+	tests := []struct {
+		name             string
+		userID           int64
+		movieID          int32
+		containsSpoilers *bool
+		content          *string
+		score            *int16
+		repoErr          error
+		wantErr          error
+		wantRepoRun      bool
+	}{
+		{
+			name:             "success with all fields",
+			userID:           42,
+			movieID:          10,
+			containsSpoilers: &validSpoilers,
+			content:          &validContent,
+			score:            &validScore,
+			wantRepoRun:      true,
+		},
+		{
+			name:        "success with only score",
+			userID:      42,
+			movieID:     10,
+			score:       &validScore,
+			wantRepoRun: true,
+		},
+		{
+			name:        "invalid score",
+			userID:      42,
+			movieID:     10,
+			score:       &invalidScore,
+			wantErr:     ErrInvalidScore,
+			wantRepoRun: false,
+		},
+		{
+			name:        "content too long",
+			userID:      42,
+			movieID:     10,
+			content:     &tooLongContent,
+			wantErr:     ErrReviewContentTooLong,
+			wantRepoRun: false,
+		},
+		{
+			name:        "review not found",
+			userID:      42,
+			movieID:     10,
+			score:       &validScore,
+			repoErr:     repositories.ErrReviewNotFound,
+			wantErr:     repositories.ErrReviewNotFound,
+			wantRepoRun: true,
+		},
+		{
+			name:        "repository error",
+			userID:      42,
+			movieID:     10,
+			score:       &validScore,
+			repoErr:     genericErr,
+			wantErr:     genericErr,
+			wantRepoRun: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotUserID int64
+			var gotMovieID int32
+			var gotContainsSpoilers *bool
+			var gotContent *string
+			var gotScore *int16
+			reviewRepo := &testutil.FakeReviewRepository{
+				UpdateReviewForMovieFunc: func(_ context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
+					if !tt.wantRepoRun {
+						t.Fatalf("UpdateReviewForMovie() called; want no repository call")
+					}
+					gotUserID, gotMovieID = userID, movieID
+					gotContainsSpoilers, gotContent, gotScore = containsSpoilers, content, score
+					if tt.repoErr != nil {
+						return nil, tt.repoErr
+					}
+					return wantReview, nil
+				},
+			}
+
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			review, err := svc.UpdateReviewForMovieByID(context.Background(), tt.containsSpoilers, tt.content, tt.score, tt.userID, tt.movieID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("UpdateReviewForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpdateReviewForMovieByID() error = %v; want nil", err)
+			}
+			if review != wantReview {
+				t.Fatalf("UpdateReviewForMovieByID() = %v; want %v", review, wantReview)
+			}
+			if gotUserID != tt.userID || gotMovieID != tt.movieID {
+				t.Fatalf("UpdateReviewForMovie() called with user %d and movie %d; want user %d and movie %d",
+					gotUserID, gotMovieID, tt.userID, tt.movieID)
+			}
+			if gotContainsSpoilers != tt.containsSpoilers || gotContent != tt.content || gotScore != tt.score {
+				t.Fatalf("UpdateReviewForMovie() forwarded wrong fields")
 			}
 		})
 	}

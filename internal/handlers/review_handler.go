@@ -29,6 +29,12 @@ type ReviewReq struct {
 	ContainsSpoilers bool   `json:"containsSpoilers"`
 }
 
+type UpdateReviewReq struct {
+	Score            *int16  `json:"score,omitempty"`
+	Content          *string `json:"content,omitempty"`
+	ContainsSpoilers *bool   `json:"containsSpoilers,omitempty"`
+}
+
 func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewHandler {
 	return &reviewHandler{
 		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo, movieRepo),
@@ -145,7 +151,45 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusCreated, review)
 }
 
-func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {}
+func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getMovieIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req UpdateReviewReq
+	if !decodeJSON(w, r, &req, reviewBodyLimit) {
+		return
+	}
+	if req.Score == nil && req.Content == nil && req.ContainsSpoilers == nil {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
+	}
+	review, err := h.reviewService.UpdateReviewForMovieByID(r.Context(), req.ContainsSpoilers, req.Content, req.Score, userID, movieID)
+	if errors.Is(err, services.ErrInvalidScore) {
+		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, services.ErrReviewContentTooLong) {
+		http.Error(w, "Review content is too long: must be less than 10000 characters", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrReviewNotFound) {
+		http.Error(w, "Review not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("update review for movie by ID: %v", err)
+		http.Error(w, "Failed to update review", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, review)
+}
 func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
 	movieID, err := getMovieIDFromRequest(r)
 	if err != nil {
