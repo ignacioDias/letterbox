@@ -58,7 +58,7 @@ func TestGetReviewsFromUserByUsernameHandler(t *testing.T) {
 			userID:      42,
 			reviews:     wantReviews,
 			wantStatus:  http.StatusOK,
-			wantBody:    `[{"id":1,"user_id":42,"movie_id":10,"score":8,"content":"","contains_spoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]`,
+			wantBody:    `[{"id":1,"user_id":42,"movie_id":10,"score":8,"content":"","containsSpoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]`,
 		},
 		{
 			name:        "invalid username",
@@ -168,7 +168,7 @@ func TestGetReviewsFromMovieByIDHandler(t *testing.T) {
 			movieID:    "10",
 			reviews:    wantReviews,
 			wantStatus: http.StatusOK,
-			wantBody:   `[{"id":1,"user_id":42,"movie_id":10,"score":8,"content":"","contains_spoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]`,
+			wantBody:   `[{"id":1,"user_id":42,"movie_id":10,"score":8,"content":"","containsSpoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]`,
 		},
 		{
 			name:       "non-numeric movie id",
@@ -262,9 +262,9 @@ func TestCreateReviewForMovieByIDHandler(t *testing.T) {
 		{
 			name:       "success",
 			movieID:    "10",
-			body:       `{"score":8,"content":"great","contains_spoilers":false}`,
+			body:       `{"score":8,"content":"great","containsSpoilers":false}`,
 			wantStatus: http.StatusCreated,
-			wantBody:   `{"id":1,"user_id":7,"movie_id":10,"score":8,"content":"great","contains_spoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}`,
+			wantBody:   `{"id":1,"user_id":7,"movie_id":10,"score":8,"content":"great","containsSpoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}`,
 		},
 		{
 			name:       "invalid movie id",
