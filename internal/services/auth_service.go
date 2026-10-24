@@ -13,10 +13,10 @@ import (
 const dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
 
 type AuthService interface {
-	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
-	LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error)
 	CreateSession(ctx context.Context, userID int64) (*domains.Session, error)
 	DeleteSession(ctx context.Context, sessionID string) error
+	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
+	LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error)
 }
 
 type authService struct {
@@ -31,6 +31,28 @@ func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositori
 		userRepository:    userRepo,
 		sessionRepository: sessionRepo,
 	}
+}
+
+func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains.Session, error) {
+	createdAt := time.Now()
+	session := &domains.Session{
+		ID:        generateSessionID(),
+		UserID:    userID,
+		CreatedAt: createdAt,
+		ExpiresAt: createdAt.Add(time.Hour),
+	}
+	if err := s.sessionRepository.CreateSession(ctx, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func generateSessionID() string {
+	return rand.Text()
+}
+
+func (s *authService) DeleteSession(ctx context.Context, sessionID string) error {
+	return s.sessionRepository.DeleteSessionByID(ctx, sessionID)
 }
 
 func (s *authService) RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error) {
@@ -79,26 +101,4 @@ func (s *authService) LoginUser(ctx context.Context, emailOrUsername, password s
 		return nil, ErrInvalidCredentials
 	}
 	return user, nil
-}
-
-func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains.Session, error) {
-	createdAt := time.Now()
-	session := &domains.Session{
-		ID:        generateSessionID(),
-		UserID:    userID,
-		CreatedAt: createdAt,
-		ExpiresAt: createdAt.Add(time.Hour),
-	}
-	if err := s.sessionRepository.CreateSession(ctx, session); err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
-func generateSessionID() string {
-	return rand.Text()
-}
-
-func (s *authService) DeleteSession(ctx context.Context, sessionID string) error {
-	return s.sessionRepository.DeleteSessionByID(ctx, sessionID)
 }

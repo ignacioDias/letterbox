@@ -15,10 +15,10 @@ const (
 )
 
 type FollowHandler interface {
-	GetFollowersByUsername(w http.ResponseWriter, r *http.Request)
-	GetFollowingByUsername(w http.ResponseWriter, r *http.Request)
 	FollowUserByUsername(w http.ResponseWriter, r *http.Request)
 	UnfollowUserByUsername(w http.ResponseWriter, r *http.Request)
+	GetFollowersByUsername(w http.ResponseWriter, r *http.Request)
+	GetFollowingByUsername(w http.ResponseWriter, r *http.Request)
 	GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request)
 	GetFollowingCountByUsername(w http.ResponseWriter, r *http.Request)
 }
@@ -31,54 +31,6 @@ func NewFollowHandler(followRepository repositories.FollowRepository, userReposi
 	return &followHandler{
 		followServices: services.NewFollowService(followRepository, userRepository, blockRepository),
 	}
-}
-
-func (h *followHandler) GetFollowersByUsername(w http.ResponseWriter, r *http.Request) {
-	username := r.PathValue("username")
-	limit, offset, err := parsePagination(r)
-	if err != nil {
-		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
-		return
-	}
-	followers, err := h.followServices.GetFollowersByUsername(r.Context(), username, limit, offset)
-	if errors.Is(err, services.ErrInvalidUsername) {
-		http.Error(w, "Invalid username", http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, repositories.ErrUserNotFound) {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("get followers by username: %v", err)
-		http.Error(w, "Error getting followers", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, followers)
-}
-
-func (h *followHandler) GetFollowingByUsername(w http.ResponseWriter, r *http.Request) {
-	username := r.PathValue("username")
-	limit, offset, err := parsePagination(r)
-	if err != nil {
-		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
-		return
-	}
-	following, err := h.followServices.GetFollowingByUsername(r.Context(), username, limit, offset)
-	if errors.Is(err, services.ErrInvalidUsername) {
-		http.Error(w, "Invalid username", http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, repositories.ErrUserNotFound) {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("get following by username: %v", err)
-		http.Error(w, "Error getting following", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, following)
 }
 
 func (h *followHandler) FollowUserByUsername(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +99,54 @@ func (h *followHandler) UnfollowUserByUsername(w http.ResponseWriter, r *http.Re
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *followHandler) GetFollowersByUsername(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
+		return
+	}
+	followers, err := h.followServices.GetFollowersByUsername(r.Context(), username, limit, offset)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get followers by username: %v", err)
+		http.Error(w, "Error getting followers", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, followers)
+}
+
+func (h *followHandler) GetFollowingByUsername(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
+		return
+	}
+	following, err := h.followServices.GetFollowingByUsername(r.Context(), username, limit, offset)
+	if errors.Is(err, services.ErrInvalidUsername) {
+		http.Error(w, "Invalid username", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get following by username: %v", err)
+		http.Error(w, "Error getting following", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, following)
 }
 
 func (h *followHandler) GetFollowersCountByUsername(w http.ResponseWriter, r *http.Request) {

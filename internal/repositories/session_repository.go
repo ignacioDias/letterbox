@@ -33,16 +33,6 @@ func (r *sessionRepository) CreateSession(ctx context.Context, session *domains.
 	return err
 }
 
-func (r *sessionRepository) DeleteOtherSessions(ctx context.Context, userID int64, keepSessionID string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 AND id <> $2`, userID, keepSessionID)
-	return err
-}
-
-func (r *sessionRepository) DeleteExpiredSessions(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= NOW()`)
-	return err
-}
-
 func (r *sessionRepository) GetSessionByID(ctx context.Context, sessionID string) (*domains.Session, error) {
 	query := `SELECT id, user_id, created_at, expires_at FROM sessions WHERE id = $1 AND expires_at > NOW()`
 	var session domains.Session
@@ -53,6 +43,16 @@ func (r *sessionRepository) GetSessionByID(ctx context.Context, sessionID string
 		return nil, err
 	}
 	return &session, nil
+}
+
+func (r *sessionRepository) DeleteOtherSessions(ctx context.Context, userID int64, keepSessionID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 AND id <> $2`, userID, keepSessionID)
+	return err
+}
+
+func (r *sessionRepository) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= NOW()`)
+	return err
 }
 
 func (r *sessionRepository) DeleteSessionByID(ctx context.Context, sessionID string) error {

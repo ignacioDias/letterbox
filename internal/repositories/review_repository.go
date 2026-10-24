@@ -11,13 +11,13 @@ import (
 )
 
 type ReviewRepository interface {
+	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
 	GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error)
-	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
-	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
+	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 }
 
 type reviewRepository struct {
@@ -28,6 +28,31 @@ func NewReviewRepository(db *sqlx.DB) ReviewRepository {
 	return &reviewRepository{
 		db: db,
 	}
+}
+
+func (r *reviewRepository) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {
+	query := `
+		INSERT INTO reviews (user_id, movie_id, score, content, contains_spoilers)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at, updated_at
+	`
+	err := r.db.QueryRowContext(ctx, query, review.UserID, review.MovieID, review.Score, review.Content, review.ContainsSpoilers).Scan(&review.ID, &review.CreatedAt, &review.UpdatedAt)
+	if err != nil {
+		return nil, mapReviewInsertError(err)
+	}
+	return review, nil
+}
+
+func mapReviewInsertError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case "23505":
+		return ErrReviewAlreadyExists
+	}
+	return err
 }
 
 func (r *reviewRepository) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
@@ -96,50 +121,6 @@ func (r *reviewRepository) GetReviewsFromMovieByID(ctx context.Context, movieID 
 	return reviews, nil
 }
 
-func (r *reviewRepository) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {
-	query := `
-		INSERT INTO reviews (user_id, movie_id, score, content, contains_spoilers)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, created_at, updated_at
-	`
-	err := r.db.QueryRowContext(ctx, query, review.UserID, review.MovieID, review.Score, review.Content, review.ContainsSpoilers).Scan(&review.ID, &review.CreatedAt, &review.UpdatedAt)
-	if err != nil {
-		return nil, mapReviewInsertError(err)
-	}
-	return review, nil
-}
-
-func mapReviewInsertError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return err
-	}
-	switch pgErr.Code {
-	case "23505":
-		return ErrReviewAlreadyExists
-	}
-	return err
-}
-
-func (r *reviewRepository) DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error {
-	query := `
-		DELETE FROM reviews
-		WHERE user_id = $1 AND id = $2
-	`
-	result, err := r.db.ExecContext(ctx, query, userID, reviewID)
-	if err != nil {
-		return err
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return ErrReviewNotFound
-	}
-	return nil
-}
-
 func (r *reviewRepository) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
 	review := &domains.Review{}
 	query := `
@@ -159,4 +140,23 @@ func (r *reviewRepository) UpdateReviewByID(ctx context.Context, userID int64, r
 		return nil, err
 	}
 	return review, nil
+}
+
+func (r *reviewRepository) DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error {
+	query := `
+		DELETE FROM reviews
+		WHERE user_id = $1 AND id = $2
+	`
+	result, err := r.db.ExecContext(ctx, query, userID, reviewID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrReviewNotFound
+	}
+	return nil
 }

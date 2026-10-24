@@ -9,10 +9,10 @@ import (
 )
 
 type FollowService interface {
-	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
-	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	FollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
 	UnfollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error
+	GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
+	GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error)
 	GetFollowersCountByUsername(ctx context.Context, username string) (int, error)
 	GetFollowingCountByUsername(ctx context.Context, username string) (int, error)
 }
@@ -32,22 +32,6 @@ func NewFollowService(followRepo repositories.FollowRepository, userRepo reposit
 		userRepository:   userRepo,
 		blockRepository:  blockRepo,
 	}
-}
-
-func (s *followService) GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
-	username = strings.TrimSpace(username)
-	if err := validateUsername(username); err != nil {
-		return nil, err
-	}
-	return s.followRepository.GetFollowersByUsername(ctx, username, limit, offset)
-}
-
-func (s *followService) GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
-	username = strings.TrimSpace(username)
-	if err := validateUsername(username); err != nil {
-		return nil, err
-	}
-	return s.followRepository.GetFollowingByUsername(ctx, username, limit, offset)
 }
 
 func (s *followService) FollowUserByUsername(ctx context.Context, userIDFollower int64, usernameFollowing string) error {
@@ -85,6 +69,22 @@ func (s *followService) UnfollowUserByUsername(ctx context.Context, userIDFollow
 		return ErrCannotUnfollowSelf
 	}
 	return s.followRepository.UnfollowUser(ctx, userIDFollower, followingID)
+}
+
+func (s *followService) GetFollowersByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
+	username = strings.TrimSpace(username)
+	if err := validateUsername(username); err != nil {
+		return nil, err
+	}
+	return s.followRepository.GetFollowersByUsername(ctx, username, limit, offset)
+}
+
+func (s *followService) GetFollowingByUsername(ctx context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
+	username = strings.TrimSpace(username)
+	if err := validateUsername(username); err != nil {
+		return nil, err
+	}
+	return s.followRepository.GetFollowingByUsername(ctx, username, limit, offset)
 }
 
 func (s *followService) GetFollowersCountByUsername(ctx context.Context, username string) (int, error) {

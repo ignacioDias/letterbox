@@ -14,9 +14,9 @@ import (
 type UserHandler interface {
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
 	GetUserByUsername(w http.ResponseWriter, r *http.Request)
-	DeleteCurrentUser(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUser(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request)
+	DeleteCurrentUser(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {
@@ -85,26 +85,6 @@ func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (h *userHandler) DeleteCurrentUser(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserID(r)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	err := h.userServices.DeleteUserByID(r.Context(), userID)
-	if errors.Is(err, repositories.ErrUserNotFound) {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("delete current user: %v", err)
-		http.Error(w, "Error deleting user", http.StatusInternalServerError)
-		return
-	}
-	clearSessionCookie(w, h.secureCookie)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
@@ -167,5 +147,25 @@ func (h *userHandler) UpdateCurrentUserPassword(w http.ResponseWriter, r *http.R
 		http.Error(w, "Error updating user password", http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *userHandler) DeleteCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	err := h.userServices.DeleteUserByID(r.Context(), userID)
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("delete current user: %v", err)
+		http.Error(w, "Error deleting user", http.StatusInternalServerError)
+		return
+	}
+	clearSessionCookie(w, h.secureCookie)
 	w.WriteHeader(http.StatusNoContent)
 }

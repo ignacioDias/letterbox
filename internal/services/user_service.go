@@ -11,9 +11,9 @@ import (
 type UserService interface {
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
-	DeleteUserByID(ctx context.Context, userID int64) error
 	UpdateUserByID(ctx context.Context, userID int64, username string, email string, country string, profilePicture string) error
 	UpdateUserPasswordByID(ctx context.Context, userID int64, currentSessionID string, currentPassword string, newPassword string) error
+	DeleteUserByID(ctx context.Context, userID int64) error
 }
 
 type userService struct {
@@ -40,10 +40,6 @@ func (s *userService) GetUserByUsername(ctx context.Context, username string) (*
 		return nil, err
 	}
 	return s.userRepository.GetUserByUsername(ctx, username)
-}
-
-func (s *userService) DeleteUserByID(ctx context.Context, userID int64) error {
-	return s.userRepository.DeleteUserByID(ctx, userID)
 }
 
 func (s *userService) UpdateUserByID(ctx context.Context, userID int64, username string, email string, country string, profilePicture string) error {
@@ -102,4 +98,8 @@ func (s *userService) UpdateUserPasswordByID(ctx context.Context, userID int64, 
 		return err
 	}
 	return s.sessionRepository.DeleteOtherSessions(ctx, userID, currentSessionID)
+}
+
+func (s *userService) DeleteUserByID(ctx context.Context, userID int64) error {
+	return s.userRepository.DeleteUserByID(ctx, userID)
 }

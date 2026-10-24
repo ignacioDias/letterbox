@@ -11,13 +11,13 @@ import (
 )
 
 type ReviewHandler interface {
-	GetReviewsFromUserByUsername(w http.ResponseWriter, r *http.Request)
 	CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request)
-	UpdateReviewByID(w http.ResponseWriter, r *http.Request)
-	DeleteReviewByID(w http.ResponseWriter, r *http.Request)
+	GetReviewsFromUserByUsername(w http.ResponseWriter, r *http.Request)
 	GetReviewsFromFollowingUsers(w http.ResponseWriter, r *http.Request)
 	GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request)
 	GetReviewByID(w http.ResponseWriter, r *http.Request)
+	UpdateReviewByID(w http.ResponseWriter, r *http.Request)
+	DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 }
 
 type reviewHandler struct {
@@ -40,6 +40,43 @@ func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo reposit
 	return &reviewHandler{
 		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo, movieRepo),
 	}
+}
+
+func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getInt32PathValue(r, "movie_id")
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req ReviewReq
+	if !decodeJSON(w, r, &req, reviewBodyLimit) {
+		return
+	}
+	review := domains.NewReview(userID, movieID, req.Score, req.Content, req.ContainsSpoilers)
+	review, err = h.reviewService.CreateReviewForMovieByID(r.Context(), review)
+	if errors.Is(err, services.ErrInvalidScore) {
+		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, services.ErrReviewContentTooLong) {
+		http.Error(w, "Review content is too long: must be less than 10000 characters", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrReviewAlreadyExists) {
+		http.Error(w, "Review already exists", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		log.Printf("create review for movie by ID: %v", err)
+		http.Error(w, "Failed to create review", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, review)
 }
 
 func (h *reviewHandler) GetReviewsFromUserByUsername(w http.ResponseWriter, r *http.Request) {
@@ -115,41 +152,23 @@ func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, reviews)
 }
 
-func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getInt32PathValue(r, "movie_id")
+func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
+	reviewID, err := getInt64PathValue(r, "review_id")
 	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		http.Error(w, "Invalid review ID", http.StatusBadRequest)
 		return
 	}
-	userID, ok := middleware.GetUserID(r)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	var req ReviewReq
-	if !decodeJSON(w, r, &req, reviewBodyLimit) {
-		return
-	}
-	review := domains.NewReview(userID, movieID, req.Score, req.Content, req.ContainsSpoilers)
-	review, err = h.reviewService.CreateReviewForMovieByID(r.Context(), review)
-	if errors.Is(err, services.ErrInvalidScore) {
-		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, services.ErrReviewContentTooLong) {
-		http.Error(w, "Review content is too long: must be less than 10000 characters", http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, repositories.ErrReviewAlreadyExists) {
-		http.Error(w, "Review already exists", http.StatusConflict)
+	review, err := h.reviewService.GetReviewByID(r.Context(), reviewID)
+	if errors.Is(err, repositories.ErrReviewNotFound) {
+		http.Error(w, "Review not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		log.Printf("create review for movie by ID: %v", err)
-		http.Error(w, "Failed to create review", http.StatusInternalServerError)
+		log.Printf("get review by ID: %v", err)
+		http.Error(w, "Failed to get review", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusCreated, review)
+	writeJSON(w, http.StatusOK, review)
 }
 
 func (h *reviewHandler) UpdateReviewByID(w http.ResponseWriter, r *http.Request) {
@@ -213,23 +232,4 @@ func (h *reviewHandler) DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
-	reviewID, err := getInt64PathValue(r, "review_id")
-	if err != nil {
-		http.Error(w, "Invalid review ID", http.StatusBadRequest)
-		return
-	}
-	review, err := h.reviewService.GetReviewByID(r.Context(), reviewID)
-	if errors.Is(err, repositories.ErrReviewNotFound) {
-		http.Error(w, "Review not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("get review by ID: %v", err)
-		http.Error(w, "Failed to get review", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, review)
 }

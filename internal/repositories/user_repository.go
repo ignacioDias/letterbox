@@ -18,9 +18,9 @@ type UserRepository interface {
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
 	GetUserHashedPassword(ctx context.Context, userID int64) (string, error)
-	DeleteUserByID(ctx context.Context, userID int64) error
 	UpdateUser(ctx context.Context, user *domains.User) error
 	UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error
+	DeleteUserByID(ctx context.Context, userID int64) error
 }
 
 type userRepository struct {
@@ -68,6 +68,17 @@ func (r *userRepository) GetUserHashedPassword(ctx context.Context, userID int64
 	return passwordHash, nil
 }
 
+func (r *userRepository) GetUserIDByUsername(ctx context.Context, username string) (int64, error) {
+	var userID int64
+	if err := r.db.GetContext(ctx, &userID, `SELECT id FROM users WHERE username = $1`, username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrUserNotFound
+		}
+		return 0, err
+	}
+	return userID, nil
+}
+
 func (r *userRepository) getUser(ctx context.Context, query string, args ...any) (*domains.User, error) {
 	var user domains.User
 	if err := r.db.GetContext(ctx, &user, query, args...); err != nil {
@@ -79,15 +90,6 @@ func (r *userRepository) getUser(ctx context.Context, query string, args ...any)
 	return &user, nil
 }
 
-func (r *userRepository) DeleteUserByID(ctx context.Context, userID int64) error {
-	query := `DELETE FROM users WHERE id = $1`
-	result, err := r.db.ExecContext(ctx, query, userID)
-	if err != nil {
-		return err
-	}
-	return requireUserAffected(result)
-}
-
 func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) error {
 	query := `UPDATE users SET username = $1, email = $2, profile_picture_url = $3, country = $4, updated_at = NOW() WHERE id = $5`
 	result, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.ProfilePictureURL, user.Country, user.ID)
@@ -96,16 +98,6 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) err
 	}
 	return requireUserAffected(result)
 }
-
-func (r *userRepository) UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error {
-	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
-	result, err := r.db.ExecContext(ctx, query, newPasswordHash, userID)
-	if err != nil {
-		return err
-	}
-	return requireUserAffected(result)
-}
-
 func mapUniqueViolation(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -119,6 +111,23 @@ func mapUniqueViolation(err error) error {
 	return err
 }
 
+func (r *userRepository) UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error {
+	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
+	result, err := r.db.ExecContext(ctx, query, newPasswordHash, userID)
+	if err != nil {
+		return err
+	}
+	return requireUserAffected(result)
+}
+
+func (r *userRepository) DeleteUserByID(ctx context.Context, userID int64) error {
+	query := `DELETE FROM users WHERE id = $1`
+	result, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return err
+	}
+	return requireUserAffected(result)
+}
 func requireUserAffected(result sql.Result) error {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
@@ -128,15 +137,4 @@ func requireUserAffected(result sql.Result) error {
 		return ErrUserNotFound
 	}
 	return nil
-}
-
-func (r *userRepository) GetUserIDByUsername(ctx context.Context, username string) (int64, error) {
-	var userID int64
-	if err := r.db.GetContext(ctx, &userID, `SELECT id FROM users WHERE username = $1`, username); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, ErrUserNotFound
-		}
-		return 0, err
-	}
-	return userID, nil
 }
