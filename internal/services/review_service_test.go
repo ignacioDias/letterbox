@@ -237,6 +237,70 @@ func TestGetReviewsFromMovieByID(t *testing.T) {
 	}
 }
 
+func TestGetReviewByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	wantReview := &domains.Review{ID: 10, UserID: 42, MovieID: 3, Score: 8}
+
+	tests := []struct {
+		name       string
+		reviewID   int64
+		review     *domains.Review
+		reviewErr  error
+		wantErr    error
+		wantReview *domains.Review
+	}{
+		{
+			name:       "success",
+			reviewID:   10,
+			review:     wantReview,
+			wantReview: wantReview,
+		},
+		{
+			name:      "review not found",
+			reviewID:  10,
+			reviewErr: repositories.ErrReviewNotFound,
+			wantErr:   repositories.ErrReviewNotFound,
+		},
+		{
+			name:      "repository error",
+			reviewID:  10,
+			reviewErr: genericErr,
+			wantErr:   genericErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotReviewID int64
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewByIDFunc: func(_ context.Context, reviewID int64) (*domains.Review, error) {
+					gotReviewID = reviewID
+					return tt.review, tt.reviewErr
+				},
+			}
+
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			review, err := svc.GetReviewByID(context.Background(), tt.reviewID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetReviewByID() error = %v; want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetReviewByID() error = %v; want nil", err)
+			}
+			if gotReviewID != tt.reviewID {
+				t.Fatalf("GetReviewByID() called with %d; want %d", gotReviewID, tt.reviewID)
+			}
+			if review != tt.wantReview {
+				t.Fatalf("GetReviewByID() = %v; want %v", review, tt.wantReview)
+			}
+		})
+	}
+}
+
 func TestCreateReviewForMovieByID(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 

@@ -14,6 +14,7 @@ type ReviewRepository interface {
 	GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
+	GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
 	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
@@ -27,6 +28,23 @@ func NewReviewRepository(db *sqlx.DB) ReviewRepository {
 	return &reviewRepository{
 		db: db,
 	}
+}
+
+func (r *reviewRepository) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
+	review := &domains.Review{}
+	query := `
+		SELECT id, user_id, movie_id, score, COALESCE(content, '') AS content, contains_spoilers, created_at, updated_at
+		FROM reviews
+		WHERE id = $1
+	`
+	err := r.db.GetContext(ctx, review, query, reviewID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrReviewNotFound
+		}
+		return nil, err
+	}
+	return review, nil
 }
 
 func (r *reviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {

@@ -216,4 +216,20 @@ func (h *reviewHandler) DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
+	reviewID, err := getInt64PathValue(r, "review_id")
+	if err != nil {
+		http.Error(w, "Invalid review ID", http.StatusBadRequest)
+		return
+	}
+	review, err := h.reviewService.GetReviewByID(r.Context(), reviewID)
+	if errors.Is(err, repositories.ErrReviewNotFound) {
+		http.Error(w, "Review not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get review by ID: %v", err)
+		http.Error(w, "Failed to get review", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, review)
 }

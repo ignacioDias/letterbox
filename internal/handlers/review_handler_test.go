@@ -229,6 +229,84 @@ func TestGetReviewsFromMovieByIDHandler(t *testing.T) {
 	}
 }
 
+func TestGetReviewByIDHandler(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	wantReview := &domains.Review{ID: 10, UserID: 42, MovieID: 3, Score: 8}
+
+	tests := []struct {
+		name       string
+		reviewID   string
+		review     *domains.Review
+		reviewErr  error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "success",
+			reviewID:   "10",
+			review:     wantReview,
+			wantStatus: http.StatusOK,
+			wantBody:   `{"id":10,"user_id":42,"movie_id":3,"score":8,"content":"","containsSpoilers":false,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}`,
+		},
+		{
+			name:       "non-numeric review id",
+			reviewID:   "abc",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "zero review id",
+			reviewID:   "0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "negative review id",
+			reviewID:   "-1",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "review id above int64",
+			reviewID:   "9223372036854775808",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "review not found",
+			reviewID:   "10",
+			reviewErr:  repositories.ErrReviewNotFound,
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "repository error",
+			reviewID:   "10",
+			reviewErr:  genericErr,
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewByIDFunc: func(context.Context, int64) (*domains.Review, error) {
+					return tt.review, tt.reviewErr
+				},
+			}
+
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/"+tt.reviewID, nil)
+			req.SetPathValue("review_id", tt.reviewID)
+			rec := httptest.NewRecorder()
+
+			handler.GetReviewByID(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantBody != "" && rec.Body.String() != tt.wantBody+"\n" {
+				t.Fatalf("body = %q; want %q", rec.Body.String(), tt.wantBody)
+			}
+		})
+	}
+}
+
 func authenticatedCreateReviewRequest(t *testing.T, handler http.HandlerFunc, userID int64, movieID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 

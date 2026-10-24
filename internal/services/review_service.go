@@ -16,6 +16,7 @@ type ReviewService interface {
 	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
+	GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error)
 }
 
 type reviewService struct {
@@ -87,4 +88,8 @@ func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID
 
 func (s *reviewService) GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error) {
 	return s.reviewRepository.GetReviewsFromMovieByID(ctx, movieID, limit, offset)
+}
+
+func (s *reviewService) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
+	return s.reviewRepository.GetReviewByID(ctx, reviewID)
 }
