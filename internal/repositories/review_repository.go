@@ -15,8 +15,8 @@ type ReviewRepository interface {
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
-	DeleteReviewForMovie(ctx context.Context, userID int64, movieID int32) error
-	UpdateReviewForMovie(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
+	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
+	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 }
 
 type reviewRepository struct {
@@ -103,12 +103,12 @@ func mapReviewInsertError(err error) error {
 	return err
 }
 
-func (r *reviewRepository) DeleteReviewForMovie(ctx context.Context, userID int64, movieID int32) error {
+func (r *reviewRepository) DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error {
 	query := `
 		DELETE FROM reviews
-		WHERE user_id = $1 AND movie_id = $2
+		WHERE user_id = $1 AND id = $2
 	`
-	result, err := r.db.ExecContext(ctx, query, userID, movieID)
+	result, err := r.db.ExecContext(ctx, query, userID, reviewID)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (r *reviewRepository) DeleteReviewForMovie(ctx context.Context, userID int6
 	return nil
 }
 
-func (r *reviewRepository) UpdateReviewForMovie(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
+func (r *reviewRepository) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
 	review := &domains.Review{}
 	query := `
 		UPDATE reviews
@@ -130,10 +130,10 @@ func (r *reviewRepository) UpdateReviewForMovie(ctx context.Context, userID int6
 		    content = COALESCE($2, content),
 		    contains_spoilers = COALESCE($3, contains_spoilers),
 		    updated_at = NOW()
-		WHERE user_id = $4 AND movie_id = $5
+		WHERE user_id = $4 AND id = $5
 		RETURNING id, user_id, movie_id, score, COALESCE(content, '') AS content, contains_spoilers, created_at, updated_at
 	`
-	err := r.db.GetContext(ctx, review, query, score, content, containsSpoilers, userID, movieID)
+	err := r.db.GetContext(ctx, review, query, score, content, containsSpoilers, userID, reviewID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrReviewNotFound

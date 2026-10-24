@@ -67,8 +67,10 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)
 	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))
-	r.mux.HandleFunc("PATCH /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.UpdateReviewForMovieByID))
-	r.mux.HandleFunc("DELETE /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.DeleteReviewForMovieByID))
+	r.mux.HandleFunc("PATCH /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.UpdateReviewByID))
+	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.DeleteReviewByID))
+
+	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID)
 
 	// Like and Dislike routes
 
@@ -77,5 +79,6 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	// Movie routes
 
 	// Messaging routes
+
 	return r.mux
 }

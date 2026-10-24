@@ -21,6 +21,7 @@
 
 - Strict layering: `router -> handler -> service -> repository`. Handlers do not run SQL, repositories do not validate, services own validation and business rules.
 - `internal/database/database.go` wires repositories into the `Database` struct. Constructors return interface types; keep each interface next to its implementation.
+- Service and repository signatures put identifiers first and payload last, e.g. `UpdateReviewByID(ctx, userID, reviewID, containsSpoilers, content, score)`. Keep this order consistent across both layers so future comment/reaction methods match.
 - The review stack already spans all layers: `ReviewRepository.GetReviewsFromUserByUserID`, `ReviewService.GetReviewsFromUserByUsername`, and `ReviewHandler.GetReviewsFromUserByUsername`. `MovieRepository` is an empty stub, so do not assume movie lookups exist.
 - Entry point `cmd/letterbox/main.go`: loads env via godotenv, connects with sqlx/pgx, runs `database.Init()`, starts hourly expired-session cleanup, then the server with graceful shutdown.
 - Schema is in `internal/database/schema.go` and is applied on every startup in one transaction using `CREATE TABLE IF NOT EXISTS`. There are no migrations: add statements to `SchemaStatements` to change tables.

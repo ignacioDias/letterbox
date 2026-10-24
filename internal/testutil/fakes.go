@@ -127,8 +127,8 @@ type FakeReviewRepository struct {
 	GetReviewsFromUserByUserIDFunc func(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByIDFunc    func(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByIDFunc   func(ctx context.Context, review *domains.Review) (*domains.Review, error)
-	DeleteReviewForMovieFunc       func(ctx context.Context, userID int64, movieID int32) error
-	UpdateReviewForMovieFunc       func(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
+	DeleteReviewByIDFunc           func(ctx context.Context, userID int64, reviewID int64) error
+	UpdateReviewByIDFunc           func(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 }
 
 func (f *FakeReviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
@@ -143,12 +143,12 @@ func (f *FakeReviewRepository) CreateReviewForMovieByID(ctx context.Context, rev
 	return f.CreateReviewForMovieByIDFunc(ctx, review)
 }
 
-func (f *FakeReviewRepository) DeleteReviewForMovie(ctx context.Context, userID int64, movieID int32) error {
-	return f.DeleteReviewForMovieFunc(ctx, userID, movieID)
+func (f *FakeReviewRepository) DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error {
+	return f.DeleteReviewByIDFunc(ctx, userID, reviewID)
 }
 
-func (f *FakeReviewRepository) UpdateReviewForMovie(ctx context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
-	return f.UpdateReviewForMovieFunc(ctx, userID, movieID, containsSpoilers, content, score)
+func (f *FakeReviewRepository) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
+	return f.UpdateReviewByIDFunc(ctx, userID, reviewID, containsSpoilers, content, score)
 }
 
 type FakeBlockRepository struct {

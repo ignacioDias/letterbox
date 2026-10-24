@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"letterbox/internal/middleware"
 	"log"
 	"net/http"
@@ -81,14 +82,22 @@ func parsePagination(r *http.Request) (int, int, error) {
 	return limit, offset, nil
 }
 
-func getMovieIDFromRequest(r *http.Request) (int32, error) {
-	parsedMovieID, err := strconv.ParseInt(r.PathValue("movie_id"), 10, 32)
+func getPathInt(r *http.Request, name string, bits int) (int64, error) {
+	id, err := strconv.ParseInt(r.PathValue(name), 10, bits)
 	if err != nil {
 		return 0, err
 	}
-	movieID := int32(parsedMovieID)
-	if movieID <= 0 {
-		return 0, errors.New("invalid movie ID")
+	if id <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
 	}
-	return movieID, nil
+	return id, nil
+}
+
+func getInt32PathValue(r *http.Request, name string) (int32, error) {
+	id, err := getPathInt(r, name, 32)
+	return int32(id), err
+}
+
+func getInt64PathValue(r *http.Request, name string) (int64, error) {
+	return getPathInt(r, name, 64)
 }

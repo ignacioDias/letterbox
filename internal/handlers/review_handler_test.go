@@ -351,7 +351,7 @@ func TestCreateReviewForMovieByIDHandlerWithoutAuth(t *testing.T) {
 	}
 }
 
-func authenticatedDeleteReviewRequest(t *testing.T, handler http.HandlerFunc, userID int64, movieID string) *httptest.ResponseRecorder {
+func authenticatedDeleteReviewRequest(t *testing.T, handler http.HandlerFunc, userID int64, reviewID string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	sessionRepo := &testutil.FakeSessionRepository{
@@ -362,52 +362,52 @@ func authenticatedDeleteReviewRequest(t *testing.T, handler http.HandlerFunc, us
 	mw := middleware.NewAuthenticationMiddleware(sessionRepo)
 	h := mw.Authenticate(handler)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/movies/"+movieID+"/reviews", nil)
-	req.SetPathValue("movie_id", movieID)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/reviews/"+reviewID, nil)
+	req.SetPathValue("review_id", reviewID)
 	req.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: "session-1"})
 	rec := httptest.NewRecorder()
 	h(rec, req)
 	return rec
 }
 
-func TestDeleteReviewForMovieByIDHandler(t *testing.T) {
+func TestDeleteReviewByIDHandler(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 
 	tests := []struct {
 		name        string
-		movieID     string
+		reviewID    string
 		repoErr     error
 		wantStatus  int
 		wantRepoRun bool
 	}{
 		{
 			name:        "success",
-			movieID:     "10",
+			reviewID:    "10",
 			wantStatus:  http.StatusNoContent,
 			wantRepoRun: true,
 		},
 		{
-			name:        "invalid movie id",
-			movieID:     "abc",
+			name:        "invalid review id",
+			reviewID:    "abc",
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
-			name:        "zero movie id",
-			movieID:     "0",
+			name:        "zero review id",
+			reviewID:    "0",
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
 			name:        "review not found",
-			movieID:     "10",
+			reviewID:    "10",
 			repoErr:     repositories.ErrReviewNotFound,
 			wantStatus:  http.StatusNotFound,
 			wantRepoRun: true,
 		},
 		{
 			name:        "repository error",
-			movieID:     "10",
+			reviewID:    "10",
 			repoErr:     genericErr,
 			wantStatus:  http.StatusInternalServerError,
 			wantRepoRun: true,
@@ -417,44 +417,44 @@ func TestDeleteReviewForMovieByIDHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotUserID int64
-			var gotMovieID int32
+			var gotReviewID int64
 			reviewRepo := &testutil.FakeReviewRepository{
-				DeleteReviewForMovieFunc: func(_ context.Context, userID int64, movieID int32) error {
+				DeleteReviewByIDFunc: func(_ context.Context, userID int64, reviewID int64) error {
 					if !tt.wantRepoRun {
-						t.Fatalf("DeleteReviewForMovieByID() called; want no repository call")
+						t.Fatalf("DeleteReviewByID() called; want no repository call")
 					}
-					gotUserID, gotMovieID = userID, movieID
+					gotUserID, gotReviewID = userID, reviewID
 					return tt.repoErr
 				},
 			}
 
 			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
-			rec := authenticatedDeleteReviewRequest(t, handler.DeleteReviewForMovieByID, 7, tt.movieID)
+			rec := authenticatedDeleteReviewRequest(t, handler.DeleteReviewByID, 7, tt.reviewID)
 
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
-			if tt.wantRepoRun && (gotUserID != 7 || gotMovieID != 10) {
-				t.Fatalf("service received user %d and movie %d; want user 7 and movie 10", gotUserID, gotMovieID)
+			if tt.wantRepoRun && (gotUserID != 7 || gotReviewID != 10) {
+				t.Fatalf("service received user %d and review %d; want user 7 and review 10", gotUserID, gotReviewID)
 			}
 		})
 	}
 }
 
-func TestDeleteReviewForMovieByIDHandlerWithoutAuth(t *testing.T) {
+func TestDeleteReviewByIDHandlerWithoutAuth(t *testing.T) {
 	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/movies/10/reviews", nil)
-	req.SetPathValue("movie_id", "10")
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/reviews/10", nil)
+	req.SetPathValue("review_id", "10")
 	rec := httptest.NewRecorder()
 
-	handler.DeleteReviewForMovieByID(rec, req)
+	handler.DeleteReviewByID(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d; want 401", rec.Code)
 	}
 }
 
-func authenticatedUpdateReviewRequest(t *testing.T, handler http.HandlerFunc, userID int64, movieID, body string) *httptest.ResponseRecorder {
+func authenticatedUpdateReviewRequest(t *testing.T, handler http.HandlerFunc, userID int64, reviewID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	sessionRepo := &testutil.FakeSessionRepository{
@@ -465,20 +465,20 @@ func authenticatedUpdateReviewRequest(t *testing.T, handler http.HandlerFunc, us
 	mw := middleware.NewAuthenticationMiddleware(sessionRepo)
 	h := mw.Authenticate(handler)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/movies/"+movieID+"/reviews", strings.NewReader(body))
-	req.SetPathValue("movie_id", movieID)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/reviews/"+reviewID, strings.NewReader(body))
+	req.SetPathValue("review_id", reviewID)
 	req.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: "session-1"})
 	rec := httptest.NewRecorder()
 	h(rec, req)
 	return rec
 }
 
-func TestUpdateReviewForMovieByIDHandler(t *testing.T) {
+func TestUpdateReviewByIDHandler(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 
 	tests := []struct {
 		name        string
-		movieID     string
+		reviewID    string
 		body        string
 		repoErr     error
 		wantStatus  int
@@ -486,56 +486,56 @@ func TestUpdateReviewForMovieByIDHandler(t *testing.T) {
 	}{
 		{
 			name:        "success",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"score":9}`,
 			wantStatus:  http.StatusOK,
 			wantRepoRun: true,
 		},
 		{
 			name:        "no fields",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{}`,
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
-			name:        "invalid movie id",
-			movieID:     "abc",
+			name:        "invalid review id",
+			reviewID:    "abc",
 			body:        `{"score":9}`,
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
 			name:        "invalid body",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"score":`,
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
 			name:        "body too large",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"content":"` + strings.Repeat("a", reviewBodyLimit) + `"}`,
 			wantStatus:  http.StatusRequestEntityTooLarge,
 			wantRepoRun: false,
 		},
 		{
 			name:        "invalid score",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"score":0}`,
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
 			name:        "content too long",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"content":"` + strings.Repeat("a", 10001) + `"}`,
 			wantStatus:  http.StatusBadRequest,
 			wantRepoRun: false,
 		},
 		{
 			name:        "review not found",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"score":9}`,
 			repoErr:     repositories.ErrReviewNotFound,
 			wantStatus:  http.StatusNotFound,
@@ -543,7 +543,7 @@ func TestUpdateReviewForMovieByIDHandler(t *testing.T) {
 		},
 		{
 			name:        "repository error",
-			movieID:     "10",
+			reviewID:    "10",
 			body:        `{"score":9}`,
 			repoErr:     genericErr,
 			wantStatus:  http.StatusInternalServerError,
@@ -554,30 +554,30 @@ func TestUpdateReviewForMovieByIDHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotUserID int64
-			var gotMovieID int32
+			var gotReviewID int64
 			var gotScore *int16
 			reviewRepo := &testutil.FakeReviewRepository{
-				UpdateReviewForMovieFunc: func(_ context.Context, userID int64, movieID int32, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
+				UpdateReviewByIDFunc: func(_ context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
 					if !tt.wantRepoRun {
-						t.Fatalf("UpdateReviewForMovie() called; want no repository call")
+						t.Fatalf("UpdateReviewByID() called; want no repository call")
 					}
-					gotUserID, gotMovieID, gotScore = userID, movieID, score
+					gotUserID, gotReviewID, gotScore = userID, reviewID, score
 					if tt.repoErr != nil {
 						return nil, tt.repoErr
 					}
-					return &domains.Review{ID: 1, UserID: userID, MovieID: movieID, Score: *score}, nil
+					return &domains.Review{ID: reviewID, UserID: userID, Score: *score}, nil
 				},
 			}
 
 			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
-			rec := authenticatedUpdateReviewRequest(t, handler.UpdateReviewForMovieByID, 7, tt.movieID, tt.body)
+			rec := authenticatedUpdateReviewRequest(t, handler.UpdateReviewByID, 7, tt.reviewID, tt.body)
 
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
 			if tt.wantRepoRun {
-				if gotUserID != 7 || gotMovieID != 10 {
-					t.Fatalf("service received user %d and movie %d; want user 7 and movie 10", gotUserID, gotMovieID)
+				if gotUserID != 7 || gotReviewID != 10 {
+					t.Fatalf("service received user %d and review %d; want user 7 and review 10", gotUserID, gotReviewID)
 				}
 				if tt.body == `{"score":9}` && (gotScore == nil || *gotScore != 9) {
 					t.Fatalf("service received score %v; want 9", gotScore)
@@ -587,13 +587,13 @@ func TestUpdateReviewForMovieByIDHandler(t *testing.T) {
 	}
 }
 
-func TestUpdateReviewForMovieByIDHandlerWithoutAuth(t *testing.T) {
+func TestUpdateReviewByIDHandlerWithoutAuth(t *testing.T) {
 	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/movies/10/reviews", strings.NewReader(`{"score":9}`))
-	req.SetPathValue("movie_id", "10")
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/reviews/10", strings.NewReader(`{"score":9}`))
+	req.SetPathValue("review_id", "10")
 	rec := httptest.NewRecorder()
 
-	handler.UpdateReviewForMovieByID(rec, req)
+	handler.UpdateReviewByID(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d; want 401", rec.Code)

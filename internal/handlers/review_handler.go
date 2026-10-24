@@ -13,10 +13,11 @@ import (
 type ReviewHandler interface {
 	GetReviewsFromUserByUsername(w http.ResponseWriter, r *http.Request)
 	CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request)
-	UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request)
-	DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request)
+	UpdateReviewByID(w http.ResponseWriter, r *http.Request)
+	DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 	GetReviewsFromFollowingUsers(w http.ResponseWriter, r *http.Request)
 	GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request)
+	GetReviewByID(w http.ResponseWriter, r *http.Request)
 }
 
 type reviewHandler struct {
@@ -95,7 +96,7 @@ func (h *reviewHandler) GetReviewsFromFollowingUsers(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, reviews)
 }
 func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getMovieIDFromRequest(r)
+	movieID, err := getInt32PathValue(r, "movie_id")
 	if err != nil {
 		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
 		return
@@ -115,7 +116,7 @@ func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.R
 }
 
 func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getMovieIDFromRequest(r)
+	movieID, err := getInt32PathValue(r, "movie_id")
 	if err != nil {
 		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
 		return
@@ -151,10 +152,10 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusCreated, review)
 }
 
-func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getMovieIDFromRequest(r)
+func (h *reviewHandler) UpdateReviewByID(w http.ResponseWriter, r *http.Request) {
+	reviewID, err := getInt64PathValue(r, "review_id")
 	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		http.Error(w, "Invalid review ID", http.StatusBadRequest)
 		return
 	}
 	userID, ok := middleware.GetUserID(r)
@@ -170,7 +171,7 @@ func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.
 		http.Error(w, "No fields to update", http.StatusBadRequest)
 		return
 	}
-	review, err := h.reviewService.UpdateReviewForMovieByID(r.Context(), req.ContainsSpoilers, req.Content, req.Score, userID, movieID)
+	review, err := h.reviewService.UpdateReviewByID(r.Context(), userID, reviewID, req.ContainsSpoilers, req.Content, req.Score)
 	if errors.Is(err, services.ErrInvalidScore) {
 		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
 		return
@@ -190,10 +191,10 @@ func (h *reviewHandler) UpdateReviewForMovieByID(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, review)
 }
-func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getMovieIDFromRequest(r)
+func (h *reviewHandler) DeleteReviewByID(w http.ResponseWriter, r *http.Request) {
+	reviewID, err := getInt64PathValue(r, "review_id")
 	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		http.Error(w, "Invalid review ID", http.StatusBadRequest)
 		return
 	}
 	userID, ok := middleware.GetUserID(r)
@@ -201,7 +202,7 @@ func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	err = h.reviewService.DeleteReviewForMovieByID(r.Context(), userID, movieID)
+	err = h.reviewService.DeleteReviewByID(r.Context(), userID, reviewID)
 	if errors.Is(err, repositories.ErrReviewNotFound) {
 		http.Error(w, "Review not found", http.StatusNotFound)
 		return
@@ -212,4 +213,7 @@ func (h *reviewHandler) DeleteReviewForMovieByID(w http.ResponseWriter, r *http.
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
 }

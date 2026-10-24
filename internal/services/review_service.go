@@ -13,8 +13,8 @@ type ReviewService interface {
 	GetReviewsFromUserByUsername(ctx context.Context, userID int64, username string, limit, offset int) ([]*domains.Review, error)
 	CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
-	UpdateReviewForMovieByID(ctx context.Context, containsSpoilers *bool, content *string, score *int16, userID int64, movieID int32) (*domains.Review, error)
-	DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error
+	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
+	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 }
 
@@ -67,18 +67,18 @@ func (s *reviewService) CreateReviewForMovieByID(ctx context.Context, review *do
 	return s.reviewRepository.CreateReviewForMovieByID(ctx, review)
 }
 
-func (s *reviewService) UpdateReviewForMovieByID(ctx context.Context, containsSpoilers *bool, content *string, score *int16, userID int64, movieID int32) (*domains.Review, error) {
+func (s *reviewService) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {
 	if score != nil && (*score < 1 || *score > 10) {
 		return nil, ErrInvalidScore
 	}
 	if content != nil && utf8.RuneCountInString(*content) > 10000 {
 		return nil, ErrReviewContentTooLong
 	}
-	return s.reviewRepository.UpdateReviewForMovie(ctx, userID, movieID, containsSpoilers, content, score)
+	return s.reviewRepository.UpdateReviewByID(ctx, userID, reviewID, containsSpoilers, content, score)
 }
 
-func (s *reviewService) DeleteReviewForMovieByID(ctx context.Context, userID int64, movieID int32) error {
-	return s.reviewRepository.DeleteReviewForMovie(ctx, userID, movieID)
+func (s *reviewService) DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error {
+	return s.reviewRepository.DeleteReviewByID(ctx, userID, reviewID)
 }
 
 func (s *reviewService) GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
