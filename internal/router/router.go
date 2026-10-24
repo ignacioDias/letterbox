@@ -12,24 +12,26 @@ type Router interface {
 }
 
 type router struct {
-	mux           *http.ServeMux
-	authHandler   handlers.AuthHandler
-	userHandler   handlers.UserHandler
-	followHandler handlers.FollowHandler
-	blockHandler  handlers.BlockHandler
-	reviewHandler handlers.ReviewHandler
-	auth          middleware.AuthenticationMiddleware
+	mux             *http.ServeMux
+	authHandler     handlers.AuthHandler
+	userHandler     handlers.UserHandler
+	followHandler   handlers.FollowHandler
+	blockHandler    handlers.BlockHandler
+	reviewHandler   handlers.ReviewHandler
+	reactionHandler handlers.ReactionHandler
+	auth            middleware.AuthenticationMiddleware
 }
 
 func NewRouter(db *database.Database) Router {
 	return &router{
-		mux:           http.NewServeMux(),
-		authHandler:   handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
-		userHandler:   handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
-		followHandler: handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
-		blockHandler:  handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
-		reviewHandler: handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, db.MovieRepository),
-		auth:          middleware.NewAuthenticationMiddleware(db.SessionRepository),
+		mux:             http.NewServeMux(),
+		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
+		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
+		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
+		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
+		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, db.MovieRepository),
+		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
+		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
 
@@ -73,6 +75,9 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID)
 
 	// Like and Dislike routes
+	r.mux.HandleFunc("POST /api/v1/reviews/{review_id}/like", r.auth.Authenticate(r.reactionHandler.LikeReviewByID))
+	r.mux.HandleFunc("POST /api/v1/reviews/{review_id}/dislike", r.auth.Authenticate(r.reactionHandler.DislikeReviewByID))
+	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromReviewByID))
 
 	// Comment routes
 

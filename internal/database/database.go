@@ -8,24 +8,26 @@ import (
 )
 
 type Database struct {
-	DB                *sqlx.DB
-	UserRepository    repositories.UserRepository
-	SessionRepository repositories.SessionRepository
-	FollowRepository  repositories.FollowRepository
-	BlockRepository   repositories.BlockRepository
-	MovieRepository   repositories.MovieRepository
-	ReviewRepository  repositories.ReviewRepository
+	DB                 *sqlx.DB
+	UserRepository     repositories.UserRepository
+	SessionRepository  repositories.SessionRepository
+	FollowRepository   repositories.FollowRepository
+	BlockRepository    repositories.BlockRepository
+	MovieRepository    repositories.MovieRepository
+	ReviewRepository   repositories.ReviewRepository
+	ReactionRepository repositories.ReactionRepository
 }
 
 func NewDatabase(db *sqlx.DB) *Database {
 	return &Database{
-		DB:                db,
-		UserRepository:    repositories.NewUserRepository(db),
-		SessionRepository: repositories.NewSessionRepository(db),
-		FollowRepository:  repositories.NewFollowRepository(db),
-		BlockRepository:   repositories.NewBlockRepository(db),
-		MovieRepository:   repositories.NewMovieRepository(db),
-		ReviewRepository:  repositories.NewReviewRepository(db),
+		DB:                 db,
+		UserRepository:     repositories.NewUserRepository(db),
+		SessionRepository:  repositories.NewSessionRepository(db),
+		FollowRepository:   repositories.NewFollowRepository(db),
+		BlockRepository:    repositories.NewBlockRepository(db),
+		MovieRepository:    repositories.NewMovieRepository(db),
+		ReviewRepository:   repositories.NewReviewRepository(db),
+		ReactionRepository: repositories.NewReactionRepository(db),
 	}
 }
 

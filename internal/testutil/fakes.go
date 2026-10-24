@@ -156,6 +156,21 @@ func (f *FakeReviewRepository) UpdateReviewByID(ctx context.Context, userID int6
 	return f.UpdateReviewByIDFunc(ctx, userID, reviewID, containsSpoilers, content, score)
 }
 
+type FakeReactionRepository struct {
+	repositories.ReactionRepository
+
+	CreateReactionForReviewFunc  func(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error)
+	RemoveReactionFromReviewFunc func(ctx context.Context, reviewID, userID int64) error
+}
+
+func (f *FakeReactionRepository) CreateReactionForReview(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error) {
+	return f.CreateReactionForReviewFunc(ctx, reaction)
+}
+
+func (f *FakeReactionRepository) RemoveReactionFromReview(ctx context.Context, reviewID, userID int64) error {
+	return f.RemoveReactionFromReviewFunc(ctx, reviewID, userID)
+}
+
 type FakeBlockRepository struct {
 	repositories.BlockRepository
 

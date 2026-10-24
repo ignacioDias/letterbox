@@ -6,7 +6,6 @@ import (
 	"errors"
 	"letterbox/internal/domains"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -38,21 +37,9 @@ func (r *reviewRepository) CreateReviewForMovieByID(ctx context.Context, review 
 	`
 	err := r.db.QueryRowContext(ctx, query, review.UserID, review.MovieID, review.Score, review.Content, review.ContainsSpoilers).Scan(&review.ID, &review.CreatedAt, &review.UpdatedAt)
 	if err != nil {
-		return nil, mapReviewInsertError(err)
+		return nil, mapPgError(err, "23505", ErrReviewAlreadyExists)
 	}
 	return review, nil
-}
-
-func mapReviewInsertError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return err
-	}
-	switch pgErr.Code {
-	case "23505":
-		return ErrReviewAlreadyExists
-	}
-	return err
 }
 
 func (r *reviewRepository) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
