@@ -13,6 +13,10 @@ type ReactionHandler interface {
 	LikeReviewByID(w http.ResponseWriter, r *http.Request)
 	DislikeReviewByID(w http.ResponseWriter, r *http.Request)
 	RemoveReactionFromReviewByID(w http.ResponseWriter, r *http.Request)
+
+	LikeCommentByID(w http.ResponseWriter, r *http.Request)
+	DislikeCommentByID(w http.ResponseWriter, r *http.Request)
+	RemoveReactionFromCommentByID(w http.ResponseWriter, r *http.Request)
 }
 
 type reactionHandler struct {
@@ -83,3 +87,7 @@ func (h *reactionHandler) RemoveReactionFromReviewByID(w http.ResponseWriter, r 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *reactionHandler) LikeCommentByID(w http.ResponseWriter, r *http.Request)               {}
+func (h *reactionHandler) DislikeCommentByID(w http.ResponseWriter, r *http.Request)            {}
+func (h *reactionHandler) RemoveReactionFromCommentByID(w http.ResponseWriter, r *http.Request) {}
