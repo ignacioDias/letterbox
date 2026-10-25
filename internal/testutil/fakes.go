@@ -200,3 +200,18 @@ func (f *FakeBlockRepository) UnblockUser(ctx context.Context, userIDBlocker, us
 func (f *FakeBlockRepository) IsBlockedBetween(ctx context.Context, userID1, userID2 int64) (bool, error) {
 	return f.IsBlockedBetweenFunc(ctx, userID1, userID2)
 }
+
+type FakeMovieRepository struct {
+	repositories.MovieRepository
+
+	SaveMovieFunc    func(ctx context.Context, movie *domains.Movie) error
+	GetMovieByIDFunc func(ctx context.Context, movieID int64) (*domains.Movie, error)
+}
+
+func (f *FakeMovieRepository) SaveMovie(ctx context.Context, movie *domains.Movie) error {
+	return f.SaveMovieFunc(ctx, movie)
+}
+
+func (f *FakeMovieRepository) GetMovieByID(ctx context.Context, movieID int64) (*domains.Movie, error) {
+	return f.GetMovieByIDFunc(ctx, movieID)
+}

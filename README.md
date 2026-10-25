@@ -3,7 +3,8 @@
 A REST API backend for a social movie-rating platform. Users can register, sign in
 with cookie-based sessions, manage their profile, follow other users, block or
 unblock them, and create, update, delete, and list reviews. Reviews can be listed per
-user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews. The data
+user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
+Movies can be looked up by TMDB id, with results cached locally. The data
 model is prepared for comments; comment endpoints are not implemented yet.
 
 ## Tech stack
@@ -11,6 +12,7 @@ model is prepared for comments; comment endpoints are not implemented yet.
 - **Go 1.27** with the standard `net/http` router (`ServeMux` patterns)
 - **PostgreSQL 17** (via Docker Compose)
 - **sqlx** + **pgx** for database access
+- **golang-tmdb** for movie metadata, cached in PostgreSQL
 - **bcrypt** for password hashing
 - **godotenv** for local environment loading
 
@@ -20,7 +22,7 @@ model is prepared for comments; comment endpoints are not implemented yet.
 cmd/letterbox/          Application entry point
 internal/
   database/             Connection wiring, schema creation
-  domains/              Domain models (User, Session, Review, Reaction, PublicUser)
+  domains/              Domain models (User, Session, Review, Reaction, Movie, PublicUser)
   handlers/             HTTP handlers
   middleware/           Authentication and rate limiting
   repositories/         SQL queries
@@ -33,8 +35,9 @@ internal/
 Requests flow through `router -> handler -> service -> repository`. Each domain has its
 own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
 `BlockRepository`, `ReviewRepository`, `ReactionRepository`, `MovieRepository`) so SQL
-stays out of handlers and services. `MovieRepository` is currently an empty stub; movies are stored in a
-local `movies` table keyed by TMDB id, and no TMDB client exists yet.
+stays out of handlers and services. `MovieRepository` reads and writes a local `movies`
+table keyed by TMDB id; on a cache miss, `MovieService` fetches the movie from TMDB and
+stores it before returning it.
 
 ## Getting started
 
@@ -60,7 +63,7 @@ automatically on startup; there is no separate migration step.
 | `POSTGRES_PASSWORD` | `letterbox` | Postgres password for the Compose container |
 | `POSTGRES_DB` | `letterbox` | Postgres database name |
 | `POSTGRES_PORT` | `5433` | Host port mapped to the container |
-| `TMDB_API_KEY` | placeholder | Reserved for future TMDB integration; not read yet |
+| `TMDB_API_KEY` | none | TMDB API key used when a movie is missing from the local cache |
 
 ## API
 
@@ -94,6 +97,7 @@ Base path: `/api/v1`
 | `POST` | `/reviews/{review_id}/like` | Yes | Implemented |
 | `POST` | `/reviews/{review_id}/dislike` | Yes | Implemented |
 | `DELETE` | `/reviews/{review_id}/reaction` | Yes | Implemented |
+| `GET` | `/movies/{movie_id}` | No | Implemented |
 
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
 accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
@@ -111,8 +115,9 @@ that are not positive 32-bit integers.
 is required and must be between 1 and 10; `content` may be empty and is capped at
 10,000 characters; `containsSpoilers` defaults to `false`. It returns `201 Created`
 with the review, `400` for invalid input, and `409` if the user already reviewed that
-movie. The movie must already exist in the local `movies` cache; missing movies
-currently surface as `500` because foreign-key violations are not mapped.
+movie. The movie must already exist in the local `movies` cache, so call
+`GET /movies/{movie_id}` first if necessary; missing movies currently surface as `500`
+because foreign-key violations are not mapped.
 
 `GET /reviews/{review_id}` returns a single review and is public. It returns `404` if
 the review does not exist, and `400` when the ID is not a positive 64-bit integer.
@@ -139,6 +144,19 @@ then disliking flips the same row. They return `200 OK` with the reaction
 `DELETE /reviews/{review_id}/reaction` removes the caller's reaction and returns
 `204 No Content`. It returns `404` when the review does not exist or the caller has no
 reaction on it. All reaction routes require authentication.
+
+### Movies
+
+`GET /movies/{movie_id}` is public and returns the movie from the local cache. On a
+cache miss it fetches the movie from TMDB (10-second timeout, cancelled if the client
+disconnects), stores it in `movies`, and returns it. Responses use `tmdbId`, `title`,
+`posterPath`, and `cachedAt`, where `cachedAt` is the timestamp at which the movie was
+first cached.
+
+It returns `400 Bad Request` for IDs that are not positive 64-bit integers, `404 Not
+Found` if TMDB has no such movie, and `500 Internal Server Error` for other TMDB or
+database failures, including a missing `TMDB_API_KEY`. The cache never expires, and
+search/trending/similar/recommendations endpoints are not implemented.
 
 ### Request body limits
 
@@ -212,6 +230,12 @@ Read reviews from users you follow:
 curl -i -b cookies.txt "http://localhost:8080/api/v1/reviews/following?limit=10&offset=0"
 ```
 
+Get a movie (served from the local cache, fetched from TMDB on a miss):
+
+```bash
+curl -i http://localhost:8080/api/v1/movies/550
+```
+
 Create a review (the movie must already be in the local cache):
 
 ```bash
@@ -283,18 +307,21 @@ go test ./...
 go test -race ./...
 ```
 
-Unit tests cover services (including review listing, creation, update, deletion, and
-reactions), handlers (including JSON body limits), middleware, and repository helpers,
-and use fakes from `internal/testutil`. Repository integration tests are not included
-because they require a running PostgreSQL instance.
+Unit tests cover services (including review listing, creation, update, deletion,
+reactions, and movie lookup with a faked TMDB client), handlers (including movie status
+mapping and JSON body limits), middleware, and repository helpers. They use fakes from
+`internal/testutil`. Repository integration tests are not included because they require
+a running PostgreSQL instance.
 
 ## Notes and limitations
 
 - Review listing (per user, following feed, and per movie), creation, reads by ID,
   partial updates, deletion, and like/dislike reactions are implemented.
-  `MovieRepository` has no methods, so creating a review requires the movie to already
-  exist in the local `movies` cache.
-- `TMDB_API_KEY` is present in `.env.example`, but nothing reads it yet.
+- Movie lookup is implemented: `GET /movies/{movie_id}` reads the local `movies` cache
+  and falls back to TMDB on a miss. The cache never expires, and only get-by-id is
+  implemented (no search, trending, similar, or recommendations).
+- Creating a review requires the movie to already exist in the local `movies` cache;
+  call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
   reviews only, and comments have no code.
 - Blocks prevent follows, remove existing follow relationships, and hide reviews in both

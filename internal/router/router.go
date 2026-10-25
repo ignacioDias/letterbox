@@ -4,6 +4,7 @@ import (
 	"letterbox/internal/database"
 	"letterbox/internal/handlers"
 	"letterbox/internal/middleware"
+	"letterbox/internal/services"
 	"net/http"
 )
 
@@ -19,6 +20,7 @@ type router struct {
 	blockHandler    handlers.BlockHandler
 	reviewHandler   handlers.ReviewHandler
 	reactionHandler handlers.ReactionHandler
+	movieHandler    handlers.MovieHandler
 	auth            middleware.AuthenticationMiddleware
 }
 
@@ -31,6 +33,7 @@ func NewRouter(db *database.Database) Router {
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
 		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, db.MovieRepository),
 		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
+		movieHandler:    handlers.NewMovieHandler(services.NewMovieService(db.MovieRepository)),
 		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
@@ -83,9 +86,14 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("POST /api/v1/comments/{comment_id}/dislike", r.auth.Authenticate(r.reactionHandler.DislikeCommentByID))
 	r.mux.HandleFunc("DELETE /api/v1/comments/{comment_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromCommentByID))
 
-	// Comment routes
-
 	// Movie routes
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID) //TODO
+	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.) //TODO
+	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.) //TODO
+	// r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.) //TODO
+	// r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.) //TODO
+
+	// Comment routes
 
 	// Messaging routes
 

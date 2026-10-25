@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS movies (
     tmdb_id      integer     PRIMARY KEY,
     title        text        NOT NULL,
     poster_path  text,
-    release_year smallint,
     cached_at    timestamptz NOT NULL DEFAULT now()
 );
 `
