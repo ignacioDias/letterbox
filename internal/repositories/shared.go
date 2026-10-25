@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -19,6 +20,7 @@ var (
 	ErrReviewAlreadyExists   = errors.New("review already exists")
 	ErrMovieNotFound         = errors.New("movie not found")
 	ErrReviewNotFound        = errors.New("review not found")
+	ErrCommentNotFound       = errors.New("comment not found")
 )
 
 func isUniqueViolation(err error) bool {
@@ -29,6 +31,16 @@ func isUniqueViolation(err error) bool {
 func mapPgError(err error, code string, mapped error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == code {
+		return mapped
+	}
+	return err
+}
+
+func mapForeignKeyError(err error, table, column string, mapped error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" &&
+		pgErr.TableName == table &&
+		strings.HasSuffix(pgErr.ConstraintName, "_"+column+"_fkey") {
 		return mapped
 	}
 	return err

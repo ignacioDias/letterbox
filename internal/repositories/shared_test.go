@@ -41,6 +41,57 @@ func TestMapPgError(t *testing.T) {
 	}
 }
 
+func TestMapForeignKeyError(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	want := ErrCommentNotFound
+
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{
+			name: "matching target constraint",
+			err:  &pgconn.PgError{Code: "23503", TableName: "comment_reactions", ConstraintName: "comment_reactions_comment_id_fkey"},
+			want: want,
+		},
+		{
+			name: "wrapped matching target constraint",
+			err:  fmt.Errorf("insert reaction: %w", &pgconn.PgError{Code: "23503", TableName: "comment_reactions", ConstraintName: "comment_reactions_comment_id_fkey"}),
+			want: want,
+		},
+		{
+			name: "user constraint",
+			err:  &pgconn.PgError{Code: "23503", TableName: "comment_reactions", ConstraintName: "comment_reactions_user_id_fkey"},
+		},
+		{
+			name: "different table",
+			err:  &pgconn.PgError{Code: "23503", TableName: "review_reactions", ConstraintName: "review_reactions_review_id_fkey"},
+		},
+		{
+			name: "different code",
+			err:  &pgconn.PgError{Code: "23505", TableName: "comment_reactions", ConstraintName: "comment_reactions_comment_id_fkey"},
+		},
+		{name: "other error", err: genericErr},
+		{name: "nil", err: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapForeignKeyError(tt.err, "comment_reactions", "comment_id", want)
+			if tt.want == nil {
+				if !errors.Is(got, tt.err) {
+					t.Fatalf("mapForeignKeyError() = %v; want original error %v", got, tt.err)
+				}
+				return
+			}
+			if !errors.Is(got, tt.want) {
+				t.Fatalf("mapForeignKeyError() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsUniqueViolation(t *testing.T) {
 	tests := []struct {
 		name string

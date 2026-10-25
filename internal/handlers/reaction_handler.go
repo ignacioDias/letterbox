@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -23,24 +25,71 @@ type reactionHandler struct {
 	reactionService services.ReactionService
 }
 
+type reactionTarget struct {
+	pathParam   string
+	invalidMsg  string
+	notFoundMsg string
+	notFoundErr error
+	create      func(ctx context.Context, targetID, userID int64, value int16) (*domains.Reaction, error)
+	remove      func(ctx context.Context, targetID, userID int64) error
+}
+
 func NewReactionHandler(reactionRepository repositories.ReactionRepository) ReactionHandler {
 	return &reactionHandler{
 		reactionService: services.NewReactionService(reactionRepository),
 	}
 }
 
+func (h *reactionHandler) reviewTarget() reactionTarget {
+	return reactionTarget{
+		pathParam:   "review_id",
+		invalidMsg:  "Invalid review ID",
+		notFoundMsg: "Review not found",
+		notFoundErr: repositories.ErrReviewNotFound,
+		create:      h.reactionService.CreateReactionForReviewByID,
+		remove:      h.reactionService.RemoveReactionFromReviewByID,
+	}
+}
+
+func (h *reactionHandler) commentTarget() reactionTarget {
+	return reactionTarget{
+		pathParam:   "comment_id",
+		invalidMsg:  "Invalid comment ID",
+		notFoundMsg: "Comment not found",
+		notFoundErr: repositories.ErrCommentNotFound,
+		create:      h.reactionService.CreateReactionForCommentByID,
+		remove:      h.reactionService.RemoveReactionFromCommentByID,
+	}
+}
+
 func (h *reactionHandler) LikeReviewByID(w http.ResponseWriter, r *http.Request) {
-	h.createReactionForReview(w, r, 1)
+	h.createReaction(w, r, h.reviewTarget(), 1)
 }
 
 func (h *reactionHandler) DislikeReviewByID(w http.ResponseWriter, r *http.Request) {
-	h.createReactionForReview(w, r, -1)
+	h.createReaction(w, r, h.reviewTarget(), -1)
 }
 
-func (h *reactionHandler) createReactionForReview(w http.ResponseWriter, r *http.Request, value int16) {
-	reviewID, err := getInt64PathValue(r, "review_id")
+func (h *reactionHandler) RemoveReactionFromReviewByID(w http.ResponseWriter, r *http.Request) {
+	h.removeReaction(w, r, h.reviewTarget())
+}
+
+func (h *reactionHandler) LikeCommentByID(w http.ResponseWriter, r *http.Request) {
+	h.createReaction(w, r, h.commentTarget(), 1)
+}
+
+func (h *reactionHandler) DislikeCommentByID(w http.ResponseWriter, r *http.Request) {
+	h.createReaction(w, r, h.commentTarget(), -1)
+}
+
+func (h *reactionHandler) RemoveReactionFromCommentByID(w http.ResponseWriter, r *http.Request) {
+	h.removeReaction(w, r, h.commentTarget())
+}
+
+func (h *reactionHandler) createReaction(w http.ResponseWriter, r *http.Request, target reactionTarget, value int16) {
+	targetID, err := getInt64PathValue(r, target.pathParam)
 	if err != nil {
-		http.Error(w, "Invalid review ID", http.StatusBadRequest)
+		http.Error(w, target.invalidMsg, http.StatusBadRequest)
 		return
 	}
 	userID, ok := middleware.GetUserID(r)
@@ -48,9 +97,9 @@ func (h *reactionHandler) createReactionForReview(w http.ResponseWriter, r *http
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	reaction, err := h.reactionService.CreateReactionForReviewByID(r.Context(), reviewID, userID, value)
-	if errors.Is(err, repositories.ErrReviewNotFound) {
-		http.Error(w, "Review not found", http.StatusNotFound)
+	reaction, err := target.create(r.Context(), targetID, userID, value)
+	if errors.Is(err, target.notFoundErr) {
+		http.Error(w, target.notFoundMsg, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -60,10 +109,11 @@ func (h *reactionHandler) createReactionForReview(w http.ResponseWriter, r *http
 	}
 	writeJSON(w, http.StatusOK, reaction)
 }
-func (h *reactionHandler) RemoveReactionFromReviewByID(w http.ResponseWriter, r *http.Request) {
-	reviewID, err := getInt64PathValue(r, "review_id")
+
+func (h *reactionHandler) removeReaction(w http.ResponseWriter, r *http.Request, target reactionTarget) {
+	targetID, err := getInt64PathValue(r, target.pathParam)
 	if err != nil {
-		http.Error(w, "Invalid review ID", http.StatusBadRequest)
+		http.Error(w, target.invalidMsg, http.StatusBadRequest)
 		return
 	}
 	userID, ok := middleware.GetUserID(r)
@@ -71,9 +121,9 @@ func (h *reactionHandler) RemoveReactionFromReviewByID(w http.ResponseWriter, r 
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	err = h.reactionService.RemoveReactionFromReviewByID(r.Context(), reviewID, userID)
-	if errors.Is(err, repositories.ErrReviewNotFound) {
-		http.Error(w, "Review not found", http.StatusNotFound)
+	err = target.remove(r.Context(), targetID, userID)
+	if errors.Is(err, target.notFoundErr) {
+		http.Error(w, target.notFoundMsg, http.StatusNotFound)
 		return
 	}
 	if errors.Is(err, repositories.ErrReactionNotFound) {
@@ -87,7 +137,3 @@ func (h *reactionHandler) RemoveReactionFromReviewByID(w http.ResponseWriter, r 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func (h *reactionHandler) LikeCommentByID(w http.ResponseWriter, r *http.Request)               {}
-func (h *reactionHandler) DislikeCommentByID(w http.ResponseWriter, r *http.Request)            {}
-func (h *reactionHandler) RemoveReactionFromCommentByID(w http.ResponseWriter, r *http.Request) {}

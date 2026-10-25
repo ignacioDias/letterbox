@@ -79,9 +79,9 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("POST /api/v1/reviews/{review_id}/dislike", r.auth.Authenticate(r.reactionHandler.DislikeReviewByID))
 	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromReviewByID))
 
-	r.mux.HandleFunc("POST /api/v1/comments/{comment_id}/like", r.auth.Authenticate(r.reactionHandler.LikeCommentByID))                     //TODO
-	r.mux.HandleFunc("POST /api/v1/comments/{comment_id}/dislike", r.auth.Authenticate(r.reactionHandler.DislikeCommentByID))               //TODO
-	r.mux.HandleFunc("DELETE /api/v1/comments/{comment_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromCommentByID)) //TODO
+	r.mux.HandleFunc("POST /api/v1/comments/{comment_id}/like", r.auth.Authenticate(r.reactionHandler.LikeCommentByID))
+	r.mux.HandleFunc("POST /api/v1/comments/{comment_id}/dislike", r.auth.Authenticate(r.reactionHandler.DislikeCommentByID))
+	r.mux.HandleFunc("DELETE /api/v1/comments/{comment_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromCommentByID))
 
 	// Comment routes
 

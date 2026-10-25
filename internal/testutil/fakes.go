@@ -159,8 +159,10 @@ func (f *FakeReviewRepository) UpdateReviewByID(ctx context.Context, userID int6
 type FakeReactionRepository struct {
 	repositories.ReactionRepository
 
-	CreateReactionForReviewFunc  func(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error)
-	RemoveReactionFromReviewFunc func(ctx context.Context, reviewID, userID int64) error
+	CreateReactionForReviewFunc   func(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error)
+	RemoveReactionFromReviewFunc  func(ctx context.Context, reviewID, userID int64) error
+	CreateReactionForCommentFunc  func(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error)
+	RemoveReactionFromCommentFunc func(ctx context.Context, commentID, userID int64) error
 }
 
 func (f *FakeReactionRepository) CreateReactionForReview(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error) {
@@ -169,6 +171,14 @@ func (f *FakeReactionRepository) CreateReactionForReview(ctx context.Context, re
 
 func (f *FakeReactionRepository) RemoveReactionFromReview(ctx context.Context, reviewID, userID int64) error {
 	return f.RemoveReactionFromReviewFunc(ctx, reviewID, userID)
+}
+
+func (f *FakeReactionRepository) CreateReactionForComment(ctx context.Context, reaction *domains.Reaction) (*domains.Reaction, error) {
+	return f.CreateReactionForCommentFunc(ctx, reaction)
+}
+
+func (f *FakeReactionRepository) RemoveReactionFromComment(ctx context.Context, commentID, userID int64) error {
+	return f.RemoveReactionFromCommentFunc(ctx, commentID, userID)
 }
 
 type FakeBlockRepository struct {

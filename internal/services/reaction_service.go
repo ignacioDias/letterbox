@@ -10,6 +10,8 @@ import (
 type ReactionService interface {
 	CreateReactionForReviewByID(ctx context.Context, reviewID int64, userID int64, score int16) (*domains.Reaction, error)
 	RemoveReactionFromReviewByID(ctx context.Context, reviewID int64, userID int64) error
+	CreateReactionForCommentByID(ctx context.Context, commentID int64, userID int64, score int16) (*domains.Reaction, error)
+	RemoveReactionFromCommentByID(ctx context.Context, commentID int64, userID int64) error
 }
 
 type reactionService struct {
@@ -34,4 +36,16 @@ func (s *reactionService) CreateReactionForReviewByID(ctx context.Context, revie
 
 func (s *reactionService) RemoveReactionFromReviewByID(ctx context.Context, reviewID int64, userID int64) error {
 	return s.reactionRepo.RemoveReactionFromReview(ctx, reviewID, userID)
+}
+
+func (s *reactionService) CreateReactionForCommentByID(ctx context.Context, commentID int64, userID int64, score int16) (*domains.Reaction, error) {
+	if score != 1 && score != -1 {
+		return nil, ErrInvalidReactionValue
+	}
+	reaction := domains.NewReaction(commentID, userID, score)
+	return s.reactionRepo.CreateReactionForComment(ctx, reaction)
+}
+
+func (s *reactionService) RemoveReactionFromCommentByID(ctx context.Context, commentID int64, userID int64) error {
+	return s.reactionRepo.RemoveReactionFromComment(ctx, commentID, userID)
 }
