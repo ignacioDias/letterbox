@@ -13,6 +13,7 @@ import (
 
 type UserHandler interface {
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	GetUserByID(w http.ResponseWriter, r *http.Request)
 	GetUserByUsername(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUser(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request)
@@ -59,6 +60,30 @@ func (h *userHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+func (h *userHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
+	userID, err := getInt64PathValue(r, "user_id")
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	user, err := h.userServices.GetUserByID(r.Context(), userID)
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get user by ID: %v", err)
+		http.Error(w, "Error getting user", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, domains.PublicUser{
+		ID:                user.ID,
+		Username:          user.Username,
+		ProfilePictureURL: user.ProfilePictureURL,
+		Country:           user.Country,
+	})
 }
 
 func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) {

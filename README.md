@@ -8,6 +8,8 @@ Movies can be looked up by TMDB id, searched, listed from TMDB's daily trending 
 expanded with similar titles, with results cached locally. The data model is prepared for
 comments; comment endpoints are not implemented yet.
 
+There is a [vibe coded frontend for this project](https://github.com/ignacioDias/frontend-letterbox).
+
 ## Tech stack
 
 - **Go 1.27** with the standard `net/http` router (`ServeMux` patterns)

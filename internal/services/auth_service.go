@@ -12,7 +12,7 @@ import (
 
 const dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
 
-const DefaultProfilePictureURL = "/static/profile_pictures/gener_pp.jpg"
+const DefaultProfilePictureURL = "/static/profile_pictures/generic_pp.jpg"
 
 type AuthService interface {
 	CreateSession(ctx context.Context, userID int64) (*domains.Session, error)

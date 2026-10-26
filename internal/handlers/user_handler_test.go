@@ -24,6 +24,14 @@ func requestWithUsername(handler http.HandlerFunc, username string) *httptest.Re
 	return rec
 }
 
+func requestWithUserID(handler http.HandlerFunc, userID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.SetPathValue("user_id", userID)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	return rec
+}
+
 func TestGetCurrentUserHandler(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 	user := &domains.User{ID: 7, Username: "ada", Email: "ada@example.com"}
@@ -117,6 +125,61 @@ func TestGetUserByUsernameHandler(t *testing.T) {
 				t.Fatalf("decode response: %v", err)
 			}
 			if got.ID != 7 || got.Username != "ada" {
+				t.Fatalf("unexpected response: %+v", got)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if _, ok := body["email"]; ok {
+				t.Fatalf("response leaked email: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestGetUserByIDHandler(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	user := &domains.User{ID: 7, Username: "ada", Email: "ada@example.com", Country: "AR"}
+
+	tests := []struct {
+		name       string
+		userID     string
+		userErr    error
+		wantStatus int
+	}{
+		{name: "success", userID: "7", wantStatus: http.StatusOK},
+		{name: "invalid ID", userID: "abc", wantStatus: http.StatusBadRequest},
+		{name: "zero ID", userID: "0", wantStatus: http.StatusBadRequest},
+		{name: "negative ID", userID: "-1", wantStatus: http.StatusBadRequest},
+		{name: "not found", userID: "7", userErr: repositories.ErrUserNotFound, wantStatus: http.StatusNotFound},
+		{name: "repository error", userID: "7", userErr: genericErr, wantStatus: http.StatusInternalServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userRepo := &testutil.FakeUserRepository{
+				GetUserByIDFunc: func(_ context.Context, userID int64) (*domains.User, error) {
+					if userID != 7 {
+						t.Fatalf("GetUserByID(%d); want 7", userID)
+					}
+					return user, tt.userErr
+				},
+			}
+			handler := NewUserHandler(userRepo, &testutil.FakeSessionRepository{})
+			rec := requestWithUserID(handler.GetUserByID, tt.userID)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got domains.PublicUser
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.ID != 7 || got.Username != "ada" || got.Country != "AR" {
 				t.Fatalf("unexpected response: %+v", got)
 			}
 			var body map[string]any
