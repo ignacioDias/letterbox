@@ -15,6 +15,7 @@ type FakeUserRepository struct {
 	GetUserByUsernameFunc        func(ctx context.Context, username string) (*domains.User, error)
 	GetUserByIDFunc              func(ctx context.Context, userID int64) (*domains.User, error)
 	GetUserHashedPasswordFunc    func(ctx context.Context, userID int64) (string, error)
+	SearchUsersFunc              func(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error)
 	DeleteUserByIDFunc           func(ctx context.Context, userID int64) error
 	UpdateUserFunc               func(ctx context.Context, user *domains.User) error
 	UpdatePasswordByIDFunc       func(ctx context.Context, userID int64, newPasswordHash string) error
@@ -42,6 +43,10 @@ func (f *FakeUserRepository) GetUserByID(ctx context.Context, userID int64) (*do
 
 func (f *FakeUserRepository) GetUserHashedPassword(ctx context.Context, userID int64) (string, error) {
 	return f.GetUserHashedPasswordFunc(ctx, userID)
+}
+
+func (f *FakeUserRepository) SearchUsers(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error) {
+	return f.SearchUsersFunc(ctx, search, limit, offset)
 }
 
 func (f *FakeUserRepository) DeleteUserByID(ctx context.Context, userID int64) error {

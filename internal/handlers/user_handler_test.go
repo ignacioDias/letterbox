@@ -138,6 +138,84 @@ func TestGetUserByUsernameHandler(t *testing.T) {
 	}
 }
 
+func TestSearchUsersHandler(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	users := []domains.PublicUser{{ID: 7, Username: "ada", ProfilePictureURL: "pic.png", Country: "AR"}}
+
+	tests := []struct {
+		name       string
+		query      string
+		result     []domains.PublicUser
+		serviceErr error
+		wantStatus int
+		wantCalled bool
+		wantSearch string
+		wantLimit  int
+		wantOffset int
+	}{
+		{name: "success", query: "?search=ada&limit=5&offset=10", result: users, wantStatus: http.StatusOK, wantCalled: true, wantSearch: "ada", wantLimit: 5, wantOffset: 10},
+		{name: "empty result", query: "?search=ghost", result: []domains.PublicUser{}, wantStatus: http.StatusOK, wantCalled: true, wantSearch: "ghost", wantLimit: defaultListLimit},
+		{name: "missing search", query: "", wantStatus: http.StatusBadRequest, wantCalled: false},
+		{name: "invalid limit", query: "?search=ada&limit=abc", wantStatus: http.StatusBadRequest, wantCalled: false},
+		{name: "invalid offset", query: "?search=ada&offset=-1", wantStatus: http.StatusBadRequest, wantCalled: false},
+		{name: "service error", query: "?search=ada", serviceErr: genericErr, wantStatus: http.StatusInternalServerError, wantCalled: true, wantSearch: "ada", wantLimit: defaultListLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			var gotSearch string
+			var gotLimit, gotOffset int
+			userRepo := &testutil.FakeUserRepository{
+				SearchUsersFunc: func(_ context.Context, search string, limit int, offset int) ([]domains.PublicUser, error) {
+					called = true
+					gotSearch = search
+					gotLimit = limit
+					gotOffset = offset
+					return tt.result, tt.serviceErr
+				},
+			}
+			handler := NewUserHandler(userRepo, &testutil.FakeSessionRepository{})
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/users/search"+tt.query, nil)
+			rec := httptest.NewRecorder()
+
+			handler.SearchUsers(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if called != tt.wantCalled {
+				t.Fatalf("repository called = %v; want %v", called, tt.wantCalled)
+			}
+			if tt.wantCalled && (gotSearch != tt.wantSearch || gotLimit != tt.wantLimit || gotOffset != tt.wantOffset) {
+				t.Fatalf("repository called with search %q, limit %d, offset %d; want %q, %d, %d",
+					gotSearch, gotLimit, gotOffset, tt.wantSearch, tt.wantLimit, tt.wantOffset)
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got []domains.PublicUser
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if len(got) != len(tt.result) {
+				t.Fatalf("response has %d users; want %d", len(got), len(tt.result))
+			}
+			for i := range got {
+				if got[i] != tt.result[i] {
+					t.Fatalf("response user %d = %+v; want %+v", i, got[i], tt.result[i])
+				}
+			}
+			if len(tt.result) == 0 && strings.TrimSpace(rec.Body.String()) != "[]" {
+				t.Fatalf("empty result body = %q; want []", rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), `"email"`) {
+				t.Fatalf("response leaked email: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestGetUserByIDHandler(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 	user := &domains.User{ID: 7, Username: "ada", Email: "ada@example.com", Country: "AR"}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"letterbox/internal/domains"
+	"strings"
 
 	"context"
 
@@ -18,6 +19,7 @@ type UserRepository interface {
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
 	GetUserHashedPassword(ctx context.Context, userID int64) (string, error)
+	SearchUsers(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error)
 	UpdateUser(ctx context.Context, user *domains.User) error
 	UpdatePasswordByID(ctx context.Context, userID int64, newPasswordHash string) error
 	DeleteUserByID(ctx context.Context, userID int64) error
@@ -88,6 +90,36 @@ func (r *userRepository) getUser(ctx context.Context, query string, args ...any)
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *userRepository) SearchUsers(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error) {
+	query := `SELECT id, username, profile_picture_url, country FROM users WHERE username ILIKE $1 ORDER BY username LIMIT $2 OFFSET $3`
+	pattern := "%" + escapeLikePattern(search) + "%"
+	rows, err := r.db.QueryxContext(ctx, query, pattern, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make([]domains.PublicUser, 0, limit)
+	for rows.Next() {
+		var user domains.PublicUser
+		if err := rows.StructScan(&user); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func escapeLikePattern(search string) string {
+	return likeEscaper.Replace(search)
 }
 
 func (r *userRepository) UpdateUser(ctx context.Context, user *domains.User) error {

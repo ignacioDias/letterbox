@@ -1,8 +1,8 @@
 # Letterbox
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
-with cookie-based sessions, manage their profile, follow other users, block or
-unblock them, and create, update, delete, and list reviews. Reviews can be listed per
+with cookie-based sessions, manage their profile, search other users by username,
+follow other users, block or unblock them, and create, update, delete, and list reviews. Reviews can be listed per
 user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
 Movies can be looked up by TMDB id, searched, listed from TMDB's daily trending feed, or
 expanded with similar titles, with results cached locally. The data model is prepared for
@@ -81,6 +81,7 @@ Base path: `/api/v1`
 | `PUT` | `/users/me` | Yes | Implemented |
 | `PUT` | `/users/me/password` | Yes | Implemented |
 | `DELETE` | `/users/me` | Yes | Implemented |
+| `GET` | `/users/search` | No | Implemented |
 | `GET` | `/users/username/{username}` | No | Implemented |
 | `GET` | `/users/username/{username}/followers` | No | Implemented |
 | `GET` | `/users/username/{username}/following` | No | Implemented |
@@ -111,6 +112,14 @@ Base path: `/api/v1`
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
 accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
 `{"count": N}`. Follow and block actions return `204 No Content` on success.
+
+`GET /users/search` is public and searches usernames case-insensitively. `search` is
+required and surrounding whitespace is trimmed; `limit` (1-100, default 20) and `offset`
+(default 0) paginate the results, which are ordered by username. It returns a JSON array
+of public users (`id`, `username`, `profilePictureURL`, `country`), or `[]` when nothing
+matches. The LIKE wildcards `%` and `_`, and backslashes, are treated literally, so they
+cannot be used to broaden the search. It returns `400 Bad Request` for a blank `search`
+or invalid pagination parameters.
 
 Reviews are returned newest-updated first as a JSON array of review objects (`id`,
 `user_id`, `movie_id`, `score`, `content`, `containsSpoilers`, `created_at`,
@@ -248,6 +257,12 @@ Log out:
 curl -i -b cookies.txt -X DELETE http://localhost:8080/api/v1/auth/logout
 ```
 
+Search users by username:
+
+```bash
+curl -i "http://localhost:8080/api/v1/users/search?search=ad&limit=10&offset=0"
+```
+
 Follow and unfollow another user:
 
 ```bash
@@ -376,15 +391,18 @@ go test ./...
 go test -race ./...
 ```
 
-Unit tests cover services (including review listing, creation, update, deletion,
-average rating, review counts, reactions, and movie lookup, search, trending, similar and
-recommended movies with a faked TMDB client), handlers (including movie status and page
-mapping, and JSON body limits), middleware, and repository helpers. They use fakes from
+Unit tests cover services (including user search, review listing, creation, update,
+deletion, average rating, review counts, reactions, and movie lookup, search, trending,
+similar and recommended movies with a faked TMDB client), handlers (including user
+search, movie status and page mapping, and JSON body limits), middleware, and repository
+helpers (including LIKE-pattern escaping). They use fakes from
 `internal/testutil`. Repository integration tests are not included because they require
 a running PostgreSQL instance.
 
 ## Notes and limitations
 
+- User search by username is implemented at `GET /users/search` with pagination and
+  literal wildcard handling.
 - Review listing (per user, following feed, and per movie), average rating, review
   counts, creation, reads by ID, partial updates, deletion, and like/dislike reactions
   are implemented.

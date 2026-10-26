@@ -15,6 +15,7 @@ type UserHandler interface {
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
 	GetUserByID(w http.ResponseWriter, r *http.Request)
 	GetUserByUsername(w http.ResponseWriter, r *http.Request)
+	SearchUsers(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUser(w http.ResponseWriter, r *http.Request)
 	UpdateCurrentUserPassword(w http.ResponseWriter, r *http.Request)
 	DeleteCurrentUser(w http.ResponseWriter, r *http.Request)
@@ -108,6 +109,26 @@ func (h *userHandler) GetUserByUsername(w http.ResponseWriter, r *http.Request) 
 		ProfilePictureURL: user.ProfilePictureURL,
 		Country:           user.Country,
 	})
+}
+
+func (h *userHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
+	search := r.URL.Query().Get("search")
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		http.Error(w, "Invalid pagination parameters", http.StatusBadRequest)
+		return
+	}
+	users, err := h.userServices.SearchUsers(r.Context(), search, limit, offset)
+	if errors.Is(err, services.ErrInvalidSearchQuery) {
+		http.Error(w, "Invalid search query", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		log.Printf("search users: %v", err)
+		http.Error(w, "Error searching users", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, users)
 }
 
 func (h *userHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {

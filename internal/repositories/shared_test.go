@@ -8,6 +8,29 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+func TestEscapeLikePattern(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "plain", input: "ada", want: "ada"},
+		{name: "empty", input: "", want: ""},
+		{name: "percent", input: "100%", want: `100\%`},
+		{name: "underscore", input: "a_b", want: `a\_b`},
+		{name: "backslash", input: `a\b`, want: `a\\b`},
+		{name: "combined", input: `\%_`, want: `\\\%\_`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := escapeLikePattern(tt.input); got != tt.want {
+				t.Fatalf("escapeLikePattern(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMapPgError(t *testing.T) {
 	genericErr := errors.New("database unavailable")
 	want := ErrReviewNotFound

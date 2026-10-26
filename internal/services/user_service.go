@@ -11,6 +11,8 @@ import (
 type UserService interface {
 	GetUserByID(ctx context.Context, userID int64) (*domains.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domains.User, error)
+	SearchUsers(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error)
+
 	UpdateUserByID(ctx context.Context, userID int64, username string, email string, country string, profilePicture string) error
 	UpdateUserPasswordByID(ctx context.Context, userID int64, currentSessionID string, currentPassword string, newPassword string) error
 	DeleteUserByID(ctx context.Context, userID int64) error
@@ -40,6 +42,14 @@ func (s *userService) GetUserByUsername(ctx context.Context, username string) (*
 		return nil, err
 	}
 	return s.userRepository.GetUserByUsername(ctx, username)
+}
+
+func (s *userService) SearchUsers(ctx context.Context, search string, limit int, offset int) ([]domains.PublicUser, error) {
+	search = strings.TrimSpace(search)
+	if search == "" {
+		return nil, ErrInvalidSearchQuery
+	}
+	return s.userRepository.SearchUsers(ctx, search, limit, offset)
 }
 
 func (s *userService) UpdateUserByID(ctx context.Context, userID int64, username string, email string, country string, profilePicture string) error {

@@ -62,6 +62,74 @@ func TestGetUserByUsername(t *testing.T) {
 	}
 }
 
+func TestSearchUsers(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+	users := []domains.PublicUser{{ID: 7, Username: "ada"}}
+
+	tests := []struct {
+		name       string
+		search     string
+		limit      int
+		offset     int
+		users      []domains.PublicUser
+		repoErr    error
+		wantErr    error
+		wantCalled bool
+		wantSearch string
+		wantLimit  int
+		wantOffset int
+	}{
+		{name: "success trims search", search: "  ada  ", limit: 10, offset: 5, users: users, wantCalled: true, wantSearch: "ada", wantLimit: 10, wantOffset: 5},
+		{name: "empty search", search: "", limit: 10, wantErr: ErrInvalidSearchQuery},
+		{name: "whitespace only search", search: "   ", limit: 10, wantErr: ErrInvalidSearchQuery},
+		{name: "repository error", search: "ada", limit: 10, repoErr: genericErr, wantErr: genericErr, wantCalled: true, wantSearch: "ada", wantLimit: 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotSearch string
+			var gotLimit, gotOffset int
+			userRepo := &testutil.FakeUserRepository{
+				SearchUsersFunc: func(_ context.Context, search string, limit int, offset int) ([]domains.PublicUser, error) {
+					gotSearch = search
+					gotLimit = limit
+					gotOffset = offset
+					return tt.users, tt.repoErr
+				},
+			}
+			svc := NewUserService(userRepo, &testutil.FakeSessionRepository{})
+
+			got, err := svc.SearchUsers(context.Background(), tt.search, tt.limit, tt.offset)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("SearchUsers() error = %v; want %v", err, tt.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("SearchUsers() error = %v; want nil", err)
+				}
+				if len(got) != len(tt.users) {
+					t.Fatalf("SearchUsers() returned %d users; want %d", len(got), len(tt.users))
+				}
+				for i := range got {
+					if got[i] != tt.users[i] {
+						t.Fatalf("SearchUsers() user %d = %+v; want %+v", i, got[i], tt.users[i])
+					}
+				}
+			}
+
+			if !tt.wantCalled {
+				return
+			}
+			if gotSearch != tt.wantSearch || gotLimit != tt.wantLimit || gotOffset != tt.wantOffset {
+				t.Fatalf("repository called with search %q, limit %d, offset %d; want %q, %d, %d",
+					gotSearch, gotLimit, gotOffset, tt.wantSearch, tt.wantLimit, tt.wantOffset)
+			}
+		})
+	}
+}
+
 func TestUpdateUserByID(t *testing.T) {
 	current := &domains.User{
 		ID:                7,
