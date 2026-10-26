@@ -4,8 +4,8 @@ A REST API backend for a social movie-rating platform. Users can register, sign 
 with cookie-based sessions, manage their profile, follow other users, block or
 unblock them, and create, update, delete, and list reviews. Reviews can be listed per
 user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
-Movies can be looked up by TMDB id, listed from TMDB's daily trending feed, or expanded
-with similar titles, with results cached locally. The data model is prepared for
+Movies can be looked up by TMDB id, searched, listed from TMDB's daily trending feed, or
+expanded with similar titles, with results cached locally. The data model is prepared for
 comments; comment endpoints are not implemented yet.
 
 ## Tech stack
@@ -103,6 +103,7 @@ Base path: `/api/v1`
 | `GET` | `/movies/{movie_id}` | No | Implemented |
 | `GET` | `/movies/{movie_id}/similar` | No | Implemented |
 | `GET` | `/movies/{movie_id}/recommendations` | No | Implemented |
+| `GET` | `/movies/search` | No | Implemented |
 | `GET` | `/movies/trending` | No | Implemented |
 
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
@@ -191,8 +192,13 @@ for other TMDB failures (including a missing `TMDB_API_KEY`).
 movies for a movie. It accepts `page` (1-500, default `1`) and uses the same paginated
 response shape as trending, caching results best-effort. It returns `400 Bad Request` for
 invalid movie IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal
-Server Error` for other TMDB failures (including a missing `TMDB_API_KEY`). Search is not
-implemented.
+Server Error` for other TMDB failures (including a missing `TMDB_API_KEY`).
+
+`GET /movies/search` is public and searches TMDB for movies. `search` is required and
+surrounding whitespace is trimmed; `page` (1-500, default `1`) is optional. It uses the
+same paginated response shape as trending, caching results best-effort. It returns `400
+Bad Request` for a blank `search` or invalid page, and `500 Internal Server Error` for TMDB
+failures (including a missing `TMDB_API_KEY`).
 
 ### Request body limits
 
@@ -369,7 +375,7 @@ go test -race ./...
 ```
 
 Unit tests cover services (including review listing, creation, update, deletion,
-average rating, review counts, reactions, and movie lookup, trending, similar and
+average rating, review counts, reactions, and movie lookup, search, trending, similar and
 recommended movies with a faked TMDB client), handlers (including movie status and page
 mapping, and JSON body limits), middleware, and repository helpers. They use fakes from
 `internal/testutil`. Repository integration tests are not included because they require
@@ -380,11 +386,11 @@ a running PostgreSQL instance.
 - Review listing (per user, following feed, and per movie), average rating, review
   counts, creation, reads by ID, partial updates, deletion, and like/dislike reactions
   are implemented.
-- Movie lookup, daily trending, similar movies, and recommendations are implemented:
-  `GET /movies/{movie_id}` reads the local `movies` cache and falls back to TMDB on a
-  miss, while `GET /movies/trending`, `GET /movies/{movie_id}/similar`, and
-  `GET /movies/{movie_id}/recommendations` paginate TMDB results and cache them
-  best-effort. The cache never expires, and search is not implemented.
+- Movie lookup, search, daily trending, similar movies, and recommendations are
+  implemented: `GET /movies/{movie_id}` reads the local `movies` cache and falls back to
+  TMDB on a miss, while `GET /movies/search`, `GET /movies/trending`,
+  `GET /movies/{movie_id}/similar`, and `GET /movies/{movie_id}/recommendations` paginate
+  TMDB results and cache them best-effort. The cache never expires.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
@@ -393,3 +399,9 @@ a running PostgreSQL instance.
   directions; they are not yet used to hide profiles, follower/following lists, comments,
   or reactions.
 - There is no lint configuration in the repository yet.
+
+## TODO
+
+- make bookmarks movies
+- add google login
+- caché

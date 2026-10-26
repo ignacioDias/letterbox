@@ -30,6 +30,11 @@ type recommendationCall struct {
 	options map[string]string
 }
 
+type searchCall struct {
+	query   string
+	options map[string]string
+}
+
 type fakeTMDBMovieGetter struct {
 	movie               *tmdb.MovieDetails
 	err                 error
@@ -42,6 +47,9 @@ type fakeTMDBMovieGetter struct {
 	recommendations     *tmdb.MovieRecommendations
 	recommendationsErr  error
 	recommendationCalls []recommendationCall
+	search              *tmdb.SearchMovies
+	searchErr           error
+	searchCalls         []searchCall
 }
 
 func (f *fakeTMDBMovieGetter) GetMovieDetails(int, map[string]string) (*tmdb.MovieDetails, error) {
@@ -61,6 +69,11 @@ func (f *fakeTMDBMovieGetter) GetMovieSimilar(movieID int, options map[string]st
 func (f *fakeTMDBMovieGetter) GetMovieRecommendations(movieID int, options map[string]string) (*tmdb.MovieRecommendations, error) {
 	f.recommendationCalls = append(f.recommendationCalls, recommendationCall{movieID: movieID, options: options})
 	return f.recommendations, f.recommendationsErr
+}
+
+func (f *fakeTMDBMovieGetter) GetSearchMovies(query string, options map[string]string) (*tmdb.SearchMovies, error) {
+	f.searchCalls = append(f.searchCalls, searchCall{query: query, options: options})
+	return f.search, f.searchErr
 }
 
 func mustParseTrending(t *testing.T, body string) *tmdb.Trending {
@@ -88,6 +101,15 @@ func mustParseRecommendations(t *testing.T, body string) *tmdb.MovieRecommendati
 		t.Fatalf("parse recommendations fixture: %v", err)
 	}
 	return &recommendations
+}
+
+func mustParseSearch(t *testing.T, body string) *tmdb.SearchMovies {
+	t.Helper()
+	var search tmdb.SearchMovies
+	if err := json.Unmarshal([]byte(body), &search); err != nil {
+		t.Fatalf("parse search fixture: %v", err)
+	}
+	return &search
 }
 
 func TestGetMovieByID(t *testing.T) {
@@ -788,6 +810,200 @@ func TestGetRecommendationsForMovieByID(t *testing.T) {
 					got.Results[i].Title != tt.want.Results[i].Title ||
 					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
 					t.Fatalf("GetRecommendationsForMovieByID() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSearchMovies(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	search := mustParseSearch(t, `{
+		"page": 2,
+		"total_pages": 3,
+		"total_results": 45,
+		"results": [
+			{"id": 20, "title": "Arrival", "poster_path": "/arrival.jpg"},
+			{"id": 21, "title": "Contact", "poster_path": "/contact.jpg"}
+		]
+	}`)
+	want := &domains.PaginatedMovies{
+		Page:         2,
+		TotalPages:   3,
+		TotalResults: 45,
+		Results: []*domains.Movie{
+			{TMDBID: 20, Title: "Arrival", PosterPath: "/arrival.jpg"},
+			{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		search    string
+		page      string
+		result    *tmdb.SearchMovies
+		tmdbErr   error
+		clientErr error
+		saveErr   error
+		wantErr   error
+		wantTMDB  bool
+		wantQuery string
+		wantPage  string
+		wantSaved []int32
+		want      *domains.PaginatedMovies
+	}{
+		{
+			name:      "returns search results with pagination metadata",
+			search:    "arrival",
+			page:      "2",
+			result:    search,
+			wantTMDB:  true,
+			wantQuery: "arrival",
+			wantPage:  "2",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+		{
+			name:      "trims query and defaults omitted page to page 1",
+			search:    "  arrival  ",
+			page:      "",
+			result:    search,
+			wantTMDB:  true,
+			wantQuery: "arrival",
+			wantPage:  "1",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+		{
+			name:    "empty query",
+			search:  "",
+			page:    "1",
+			wantErr: ErrInvalidSearchQuery,
+		},
+		{
+			name:    "whitespace-only query",
+			search:  "   ",
+			page:    "1",
+			wantErr: ErrInvalidSearchQuery,
+		},
+		{name: "non-numeric page", search: "arrival", page: "abc", wantErr: ErrInvalidPage},
+		{name: "zero page", search: "arrival", page: "0", wantErr: ErrInvalidPage},
+		{name: "page above maximum", search: "arrival", page: "501", wantErr: ErrInvalidPage},
+		{
+			name:      "empty results",
+			search:    "arrival",
+			page:      "1",
+			result:    mustParseSearch(t, `{"page": 1, "total_pages": 0, "total_results": 0, "results": []}`),
+			wantTMDB:  true,
+			wantQuery: "arrival",
+			wantPage:  "1",
+			want: &domains.PaginatedMovies{
+				Page:         1,
+				TotalPages:   0,
+				TotalResults: 0,
+				Results:      []*domains.Movie{},
+			},
+		},
+		{
+			name:      "tmdb client error",
+			search:    "arrival",
+			page:      "1",
+			clientErr: genericErr,
+			wantErr:   genericErr,
+		},
+		{
+			name:      "tmdb error",
+			search:    "arrival",
+			page:      "1",
+			tmdbErr:   genericErr,
+			wantErr:   genericErr,
+			wantTMDB:  true,
+			wantQuery: "arrival",
+			wantPage:  "1",
+		},
+		{
+			name:      "save error does not fail the request",
+			search:    "arrival",
+			page:      "1",
+			result:    search,
+			saveErr:   genericErr,
+			wantTMDB:  true,
+			wantQuery: "arrival",
+			wantPage:  "1",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var saved []int32
+			movieRepo := &testutil.FakeMovieRepository{
+				SaveMovieFunc: func(_ context.Context, movie *domains.Movie) error {
+					saved = append(saved, movie.TMDBID)
+					return tt.saveErr
+				},
+			}
+			client := &fakeTMDBMovieGetter{search: tt.result, searchErr: tt.tmdbErr}
+			svc := &movieService{
+				movieRepository: movieRepo,
+				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return client, nil
+				},
+			}
+
+			got, err := svc.SearchMovies(context.Background(), tt.search, tt.page)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("SearchMovies() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("SearchMovies() error = %v; want nil", err)
+			}
+
+			if tt.wantTMDB {
+				if len(client.searchCalls) != 1 {
+					t.Fatalf("TMDB GetSearchMovies called %d times; want 1", len(client.searchCalls))
+				}
+				if client.searchCalls[0].query != tt.wantQuery {
+					t.Fatalf("TMDB GetSearchMovies(%q); want %q", client.searchCalls[0].query, tt.wantQuery)
+				}
+				if got := client.searchCalls[0].options["page"]; got != tt.wantPage {
+					t.Fatalf("TMDB page option = %q; want %q", got, tt.wantPage)
+				}
+			} else if len(client.searchCalls) != 0 {
+				t.Fatalf("TMDB GetSearchMovies called %d times; want 0", len(client.searchCalls))
+			}
+
+			if !slices.Equal(saved, tt.wantSaved) {
+				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("SearchMovies() = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("SearchMovies() = nil; want result")
+			}
+			if got.Page != tt.want.Page || got.TotalPages != tt.want.TotalPages || got.TotalResults != tt.want.TotalResults {
+				t.Fatalf("SearchMovies() metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+					got.Page, got.TotalPages, got.TotalResults, tt.want.Page, tt.want.TotalPages, tt.want.TotalResults)
+			}
+			if len(got.Results) != len(tt.want.Results) {
+				t.Fatalf("SearchMovies() returned %d movies; want %d", len(got.Results), len(tt.want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != tt.want.Results[i].TMDBID ||
+					got.Results[i].Title != tt.want.Results[i].Title ||
+					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
+					t.Fatalf("SearchMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
 				}
 			}
 		})

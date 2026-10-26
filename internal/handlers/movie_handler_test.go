@@ -18,6 +18,7 @@ type fakeMovieService struct {
 	getTrendingMoviesFunc              func(ctx context.Context, page string) (*domains.PaginatedMovies, error)
 	getSimilarMoviesFunc               func(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 	getRecommendationsForMovieByIDFunc func(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
+	searchMoviesFunc                   func(ctx context.Context, search string, page string) (*domains.PaginatedMovies, error)
 }
 
 func (f *fakeMovieService) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
@@ -34,6 +35,10 @@ func (f *fakeMovieService) GetSimilarMovies(ctx context.Context, movieID int32, 
 
 func (f *fakeMovieService) GetRecommendationsForMovieByID(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
 	return f.getRecommendationsForMovieByIDFunc(ctx, movieID, page)
+}
+
+func (f *fakeMovieService) SearchMovies(ctx context.Context, search string, page string) (*domains.PaginatedMovies, error) {
+	return f.searchMoviesFunc(ctx, search, page)
 }
 
 func TestGetMovieByIDHandler(t *testing.T) {
@@ -323,6 +328,91 @@ func TestGetRecommendationsForMovieByIDHandler(t *testing.T) {
 			if tt.wantCalled {
 				if gotMovieID != 550 {
 					t.Fatalf("service called with movieID %d; want 550", gotMovieID)
+				}
+				if gotPage != tt.wantPage {
+					t.Fatalf("service called with page %q; want %q", gotPage, tt.wantPage)
+				}
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got domains.PaginatedMovies
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.Page != want.Page || got.TotalPages != want.TotalPages || got.TotalResults != want.TotalResults {
+				t.Fatalf("unexpected metadata: %+v", got)
+			}
+			if len(got.Results) != len(want.Results) {
+				t.Fatalf("returned %d movies; want %d", len(got.Results), len(want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != want.Results[i].TMDBID || got.Results[i].Title != want.Results[i].Title {
+					t.Fatalf("unexpected result %d: %+v", i, got.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSearchMoviesHandler(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	want := &domains.PaginatedMovies{
+		Page:         2,
+		TotalPages:   3,
+		TotalResults: 45,
+		Results: []*domains.Movie{
+			{TMDBID: 20, Title: "Arrival", PosterPath: "/arrival.jpg"},
+			{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		query      string
+		result     *domains.PaginatedMovies
+		serviceErr error
+		wantStatus int
+		wantCalled bool
+		wantSearch string
+		wantPage   string
+	}{
+		{name: "success", query: "?search=arrival&page=2", result: want, wantStatus: http.StatusOK, wantCalled: true, wantSearch: "arrival", wantPage: "2"},
+		{name: "omitted page", query: "?search=arrival", result: want, wantStatus: http.StatusOK, wantCalled: true, wantSearch: "arrival", wantPage: ""},
+		{name: "missing search", query: "", serviceErr: services.ErrInvalidSearchQuery, wantStatus: http.StatusBadRequest, wantCalled: true},
+		{name: "invalid page", query: "?search=arrival&page=abc", serviceErr: services.ErrInvalidPage, wantStatus: http.StatusBadRequest, wantCalled: true, wantSearch: "arrival", wantPage: "abc"},
+		{name: "service error", query: "?search=arrival", serviceErr: genericErr, wantStatus: http.StatusInternalServerError, wantCalled: true, wantSearch: "arrival"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			var gotSearch string
+			var gotPage string
+			movieService := &fakeMovieService{
+				searchMoviesFunc: func(_ context.Context, search string, page string) (*domains.PaginatedMovies, error) {
+					called = true
+					gotSearch = search
+					gotPage = page
+					return tt.result, tt.serviceErr
+				},
+			}
+			handler := NewMovieHandler(movieService)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/search"+tt.query, nil)
+			rec := httptest.NewRecorder()
+
+			handler.SearchMovies(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if called != tt.wantCalled {
+				t.Fatalf("service called = %v; want %v", called, tt.wantCalled)
+			}
+			if tt.wantCalled {
+				if gotSearch != tt.wantSearch {
+					t.Fatalf("service called with search %q; want %q", gotSearch, tt.wantSearch)
 				}
 				if gotPage != tt.wantPage {
 					t.Fatalf("service called with page %q; want %q", gotPage, tt.wantPage)

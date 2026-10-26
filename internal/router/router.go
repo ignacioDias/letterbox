@@ -95,7 +95,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID)
-	// r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies) //TODO
+	r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies)
 	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)
 
 	// Comment routes

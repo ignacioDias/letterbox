@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	tmdb "github.com/cyruzin/golang-tmdb"
@@ -19,6 +20,7 @@ type MovieService interface {
 	GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error)
 	GetRecommendationsForMovieByID(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 	GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
+	SearchMovies(ctx context.Context, search string, page string) (*domains.PaginatedMovies, error)
 }
 
 type tmdbMovieGetter interface {
@@ -26,6 +28,7 @@ type tmdbMovieGetter interface {
 	GetTrending(mediaType, timeWindow string, urlOptions map[string]string) (*tmdb.Trending, error)
 	GetMovieSimilar(mediaID int, urlOptions map[string]string) (*tmdb.MovieSimilar, error)
 	GetMovieRecommendations(mediaID int, urlOptions map[string]string) (*tmdb.MovieRecommendations, error)
+	GetSearchMovies(query string, urlOptions map[string]string) (*tmdb.SearchMovies, error)
 }
 
 const tmdbNotFoundStatusCode = 34
@@ -33,6 +36,7 @@ const tmdbNotFoundStatusCode = 34
 const maxTMDBPage = 500
 
 var ErrInvalidPage = errors.New("invalid page number")
+var ErrInvalidSearchQuery = errors.New("invalid search query")
 
 type movieService struct {
 	movieRepository repositories.MovieRepository
@@ -96,6 +100,14 @@ func (s *movieService) getMovieFromTMDB(ctx context.Context, movieID int32) (*do
 		return nil, err
 	}
 	return convertTMDBMovieToDomainMovie(movie), nil
+}
+func convertTMDBMovieToDomainMovie(tmdbMovie *tmdb.MovieDetails) *domains.Movie {
+	return &domains.Movie{
+		TMDBID:     int32(tmdbMovie.ID),
+		Title:      tmdbMovie.Title,
+		PosterPath: tmdbMovie.PosterPath,
+		CachedAt:   time.Now(),
+	}
 }
 
 func isTMDBNotFound(err error) bool {
@@ -233,11 +245,41 @@ func (s *movieService) convertTMDBSimilarToDomainMovies(ctx context.Context, sim
 	return domainMovies
 }
 
-func convertTMDBMovieToDomainMovie(tmdbMovie *tmdb.MovieDetails) *domains.Movie {
-	return &domains.Movie{
-		TMDBID:     int32(tmdbMovie.ID),
-		Title:      tmdbMovie.Title,
-		PosterPath: tmdbMovie.PosterPath,
-		CachedAt:   time.Now(),
+func (s *movieService) SearchMovies(ctx context.Context, search string, page string) (*domains.PaginatedMovies, error) {
+	search = strings.TrimSpace(search)
+	if search == "" {
+		return nil, ErrInvalidSearchQuery
 	}
+	page, err := normalizeAndValidatePage(page)
+	if err != nil {
+		return nil, err
+	}
+	tmdbClient, err := s.newTMDBClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	options := make(map[string]string)
+	options["page"] = page
+	searchResult, err := tmdbClient.GetSearchMovies(search, options)
+	if err != nil {
+		return nil, err
+	}
+	result := s.convertTMDBSearchToDomainMovies(ctx, searchResult)
+	return domains.NewPaginatedMovies(searchResult.Page, searchResult.TotalPages, searchResult.TotalResults, result), nil
+}
+
+func (s *movieService) convertTMDBSearchToDomainMovies(ctx context.Context, searchResult *tmdb.SearchMovies) []*domains.Movie {
+	if searchResult == nil || len(searchResult.Results) == 0 {
+		return []*domains.Movie{}
+	}
+	var domainMovies []*domains.Movie
+	domainMovies = make([]*domains.Movie, 0, len(searchResult.Results))
+	for _, result := range searchResult.Results {
+		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
+		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
+			log.Printf("Error saving movie to repository: %v", err)
+		}
+		domainMovies = append(domainMovies, domainMovie)
+	}
+	return domainMovies
 }

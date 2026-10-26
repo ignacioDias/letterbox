@@ -15,6 +15,7 @@ type MovieHandler interface {
 	GetTrendingMovies(w http.ResponseWriter, r *http.Request)
 	GetRecommendationsForMovieByID(w http.ResponseWriter, r *http.Request)
 	GetSimilarMovies(w http.ResponseWriter, r *http.Request)
+	SearchMovies(w http.ResponseWriter, r *http.Request)
 }
 
 type movieHandler struct {
@@ -64,6 +65,16 @@ func (h *movieHandler) GetRecommendationsForMovieByID(w http.ResponseWriter, r *
 	handlePaginatedMoviesByID(w, r, h.movieService.GetRecommendationsForMovieByID, "recommended movies")
 }
 
+func (h *movieHandler) SearchMovies(w http.ResponseWriter, r *http.Request) {
+	search := r.URL.Query().Get("search")
+	page := r.URL.Query().Get("page")
+	movies, err := h.movieService.SearchMovies(r.Context(), search, page)
+	if writePaginatedMoviesError(w, err, "search results") {
+		return
+	}
+	writeJSON(w, http.StatusOK, movies)
+}
+
 func handlePaginatedMovies(w http.ResponseWriter, r *http.Request, fetch paginatedMoviesFetcher, label string) {
 	movies, err := fetch(r.Context(), r.URL.Query().Get("page"))
 	if writePaginatedMoviesError(w, err, label) {
@@ -91,6 +102,8 @@ func writePaginatedMoviesError(w http.ResponseWriter, err error, label string) b
 		return false
 	case errors.Is(err, services.ErrInvalidPage):
 		http.Error(w, "Invalid page parameter", http.StatusBadRequest)
+	case errors.Is(err, services.ErrInvalidSearchQuery):
+		http.Error(w, "Invalid search query", http.StatusBadRequest)
 	case errors.Is(err, repositories.ErrMovieNotFound):
 		http.Error(w, "Movie not found", http.StatusNotFound)
 	default:
