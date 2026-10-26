@@ -734,3 +734,60 @@ func TestGetAverageRatingForMovieByIDHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReviewsCountForMovieByIDHandler(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name       string
+		movieID    string
+		count      int
+		repoErr    error
+		wantStatus int
+		wantCalled bool
+		wantBody   string
+	}{
+		{name: "success", movieID: "550", count: 3, wantStatus: http.StatusOK, wantCalled: true, wantBody: `{"count":3}`},
+		{name: "no reviews", movieID: "550", count: 0, wantStatus: http.StatusOK, wantCalled: true, wantBody: `{"count":0}`},
+		{name: "invalid movie ID", movieID: "abc", wantStatus: http.StatusBadRequest},
+		{name: "zero movie ID", movieID: "0", wantStatus: http.StatusBadRequest},
+		{name: "movie not found", movieID: "550", repoErr: repositories.ErrMovieNotFound, wantStatus: http.StatusNotFound, wantCalled: true},
+		{name: "repository error", movieID: "550", repoErr: genericErr, wantStatus: http.StatusInternalServerError, wantCalled: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			var gotMovieID int32
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewsCountForMovieByIDFunc: func(_ context.Context, movieID int32) (int, error) {
+					called = true
+					gotMovieID = movieID
+					return tt.count, tt.repoErr
+				},
+			}
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/reviews/count", nil)
+			req.SetPathValue("movie_id", tt.movieID)
+			rec := httptest.NewRecorder()
+
+			handler.GetReviewsCountForMovieByID(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if called != tt.wantCalled {
+				t.Fatalf("service called = %v; want %v", called, tt.wantCalled)
+			}
+			if tt.wantCalled && gotMovieID != 550 {
+				t.Fatalf("service called with movieID %d; want 550", gotMovieID)
+			}
+			if tt.wantBody != "" {
+				if got := strings.TrimSpace(rec.Body.String()); got != tt.wantBody {
+					t.Fatalf("body = %q; want %q", got, tt.wantBody)
+				}
+			}
+		})
+	}
+}

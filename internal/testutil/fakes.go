@@ -128,6 +128,7 @@ type FakeReviewRepository struct {
 	GetReviewsFromMovieByIDFunc      func(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	GetReviewByIDFunc                func(ctx context.Context, reviewID int64) (*domains.Review, error)
 	GetAverageRatingForMovieByIDFunc func(ctx context.Context, movieID int32) (float64, error)
+	GetReviewsCountForMovieByIDFunc  func(ctx context.Context, movieID int32) (int, error)
 	CreateReviewForMovieByIDFunc     func(ctx context.Context, review *domains.Review) (*domains.Review, error)
 	DeleteReviewByIDFunc             func(ctx context.Context, userID int64, reviewID int64) error
 	UpdateReviewByIDFunc             func(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
@@ -147,6 +148,10 @@ func (f *FakeReviewRepository) GetReviewByID(ctx context.Context, reviewID int64
 
 func (f *FakeReviewRepository) GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error) {
 	return f.GetAverageRatingForMovieByIDFunc(ctx, movieID)
+}
+
+func (f *FakeReviewRepository) GetReviewsCountForMovieByID(ctx context.Context, movieID int32) (int, error) {
+	return f.GetReviewsCountForMovieByIDFunc(ctx, movieID)
 }
 
 func (f *FakeReviewRepository) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {

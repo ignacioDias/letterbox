@@ -92,6 +92,7 @@ Base path: `/api/v1`
 | `GET` | `/reviews/following` | Yes | Implemented |
 | `GET` | `/movies/{movie_id}/reviews` | No | Implemented |
 | `GET` | `/movies/{movie_id}/reviews/average` | No | Implemented |
+| `GET` | `/movies/{movie_id}/reviews/count` | No | Implemented |
 | `POST` | `/movies/{movie_id}/reviews` | Yes | Implemented |
 | `GET` | `/reviews/{review_id}` | No | Implemented |
 | `PATCH` | `/reviews/{review_id}` | Yes | Implemented |
@@ -120,6 +121,11 @@ that are not positive 32-bit integers.
 `{"averageRating": N}`. It returns `0` when the movie exists but has no reviews, `400`
 for movie IDs that are not positive 32-bit integers, and `404` when the movie is not in
 the local cache.
+
+`GET /movies/{movie_id}/reviews/count` is public and returns the total number of reviews
+as `{"count": N}`. It returns `0` when the movie exists but has no reviews, `400` for
+movie IDs that are not positive 32-bit integers, and `404` when the movie is not in the
+local cache.
 
 `POST /movies/{movie_id}/reviews` creates a review for the authenticated user. `score`
 is required and must be between 1 and 10; `content` may be empty and is capped at
@@ -260,6 +266,13 @@ Read reviews from users you follow:
 curl -i -b cookies.txt "http://localhost:8080/api/v1/reviews/following?limit=10&offset=0"
 ```
 
+Get a movie's average score and review count:
+
+```bash
+curl -i "http://localhost:8080/api/v1/movies/550/reviews/average"
+curl -i "http://localhost:8080/api/v1/movies/550/reviews/count"
+```
+
 Get a movie (served from the local cache, fetched from TMDB on a miss):
 
 ```bash
@@ -356,16 +369,17 @@ go test -race ./...
 ```
 
 Unit tests cover services (including review listing, creation, update, deletion,
-average rating, reactions, and movie lookup, trending, similar and recommended movies
-with a faked TMDB client), handlers (including movie status and page mapping, and JSON
-body limits), middleware, and repository helpers. They use fakes from `internal/testutil`.
-Repository integration tests are not included because they require a running PostgreSQL
-instance.
+average rating, review counts, reactions, and movie lookup, trending, similar and
+recommended movies with a faked TMDB client), handlers (including movie status and page
+mapping, and JSON body limits), middleware, and repository helpers. They use fakes from
+`internal/testutil`. Repository integration tests are not included because they require
+a running PostgreSQL instance.
 
 ## Notes and limitations
 
-- Review listing (per user, following feed, and per movie), average rating, creation,
-  reads by ID, partial updates, deletion, and like/dislike reactions are implemented.
+- Review listing (per user, following feed, and per movie), average rating, review
+  counts, creation, reads by ID, partial updates, deletion, and like/dislike reactions
+  are implemented.
 - Movie lookup, daily trending, similar movies, and recommendations are implemented:
   `GET /movies/{movie_id}` reads the local `movies` cache and falls back to TMDB on a
   miss, while `GET /movies/trending`, `GET /movies/{movie_id}/similar`, and

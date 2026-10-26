@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
@@ -17,6 +18,7 @@ type ReviewHandler interface {
 	GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request)
 	GetReviewByID(w http.ResponseWriter, r *http.Request)
 	GetAverageRatingForMovieByID(w http.ResponseWriter, r *http.Request)
+	GetReviewsCountForMovieByID(w http.ResponseWriter, r *http.Request)
 	UpdateReviewByID(w http.ResponseWriter, r *http.Request)
 	DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 }
@@ -44,9 +46,8 @@ func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo reposit
 }
 
 func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getInt32PathValue(r, "movie_id")
-	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+	movieID, ok := movieIDFromRequest(w, r)
+	if !ok {
 		return
 	}
 	userID, ok := middleware.GetUserID(r)
@@ -59,7 +60,7 @@ func (h *reviewHandler) CreateReviewForMovieByID(w http.ResponseWriter, r *http.
 		return
 	}
 	review := domains.NewReview(userID, movieID, req.Score, req.Content, req.ContainsSpoilers)
-	review, err = h.reviewService.CreateReviewForMovieByID(r.Context(), review)
+	review, err := h.reviewService.CreateReviewForMovieByID(r.Context(), review)
 	if errors.Is(err, services.ErrInvalidScore) {
 		http.Error(w, "Invalid score: 1-10", http.StatusBadRequest)
 		return
@@ -134,9 +135,8 @@ func (h *reviewHandler) GetReviewsFromFollowingUsers(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, reviews)
 }
 func (h *reviewHandler) GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request) {
-	movieID, err := getInt32PathValue(r, "movie_id")
-	if err != nil {
-		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+	movieID, ok := movieIDFromRequest(w, r)
+	if !ok {
 		return
 	}
 	limit, offset, err := parsePagination(r)
@@ -173,22 +173,40 @@ func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *reviewHandler) GetAverageRatingForMovieByID(w http.ResponseWriter, r *http.Request) {
+	handleMovieReviewAggregate(w, r, "averageRating", h.reviewService.GetAverageRatingForMovieByID,
+		"get average rating for movie by ID", "Failed to get average rating")
+}
+
+func (h *reviewHandler) GetReviewsCountForMovieByID(w http.ResponseWriter, r *http.Request) {
+	handleMovieReviewAggregate(w, r, "count", h.reviewService.GetReviewsCountForMovieByID,
+		"get reviews count for movie by ID", "Failed to get reviews count")
+}
+
+func movieIDFromRequest(w http.ResponseWriter, r *http.Request) (int32, bool) {
 	movieID, err := getInt32PathValue(r, "movie_id")
 	if err != nil {
 		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return 0, false
+	}
+	return movieID, true
+}
+
+func handleMovieReviewAggregate[T any](w http.ResponseWriter, r *http.Request, key string, fetch func(ctx context.Context, movieID int32) (T, error), logMessage string, errorMessage string) {
+	movieID, ok := movieIDFromRequest(w, r)
+	if !ok {
 		return
 	}
-	averageRating, err := h.reviewService.GetAverageRatingForMovieByID(r.Context(), movieID)
+	value, err := fetch(r.Context(), movieID)
 	if errors.Is(err, repositories.ErrMovieNotFound) {
 		http.Error(w, "Movie not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		log.Printf("get average rating for movie by ID: %v", err)
-		http.Error(w, "Failed to get average rating", http.StatusInternalServerError)
+		log.Printf("%s: %v", logMessage, err)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]float64{"averageRating": averageRating})
+	writeJSON(w, http.StatusOK, map[string]T{key: value})
 }
 
 func (h *reviewHandler) UpdateReviewByID(w http.ResponseWriter, r *http.Request) {

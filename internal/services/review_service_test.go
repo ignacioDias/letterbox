@@ -626,3 +626,60 @@ func TestGetAverageRatingForMovieByID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReviewsCountForMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name      string
+		movieID   int32
+		count     int
+		repoErr   error
+		wantErr   error
+		wantCount int
+	}{
+		{name: "success", movieID: 550, count: 3, wantCount: 3},
+		{name: "no reviews", movieID: 550, count: 0, wantCount: 0},
+		{
+			name:    "movie not found",
+			movieID: 550,
+			repoErr: repositories.ErrMovieNotFound,
+			wantErr: repositories.ErrMovieNotFound,
+		},
+		{
+			name:    "repository error",
+			movieID: 550,
+			repoErr: genericErr,
+			wantErr: genericErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMovieID int32
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetReviewsCountForMovieByIDFunc: func(_ context.Context, movieID int32) (int, error) {
+					gotMovieID = movieID
+					return tt.count, tt.repoErr
+				},
+			}
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+
+			got, err := svc.GetReviewsCountForMovieByID(context.Background(), tt.movieID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetReviewsCountForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetReviewsCountForMovieByID() error = %v; want nil", err)
+			}
+			if got != tt.wantCount {
+				t.Fatalf("GetReviewsCountForMovieByID() = %v; want %v", got, tt.wantCount)
+			}
+			if gotMovieID != tt.movieID {
+				t.Fatalf("GetReviewsCountForMovieByID() called with movieID %d; want %d", gotMovieID, tt.movieID)
+			}
+		})
+	}
+}

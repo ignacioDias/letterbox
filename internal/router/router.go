@@ -72,6 +72,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/count", r.reviewHandler.GetReviewsCountForMovieByID)
 	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))
 	r.mux.HandleFunc("PATCH /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.UpdateReviewByID))
 	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.DeleteReviewByID))
