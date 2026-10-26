@@ -143,7 +143,7 @@ func TestGetReviewsFromUserByUsername(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, userRepo, blockRepo, nil)
+			svc := NewReviewService(reviewRepo, userRepo, blockRepo)
 			reviews, err := svc.GetReviewsFromUserByUsername(context.Background(), tt.requesterID, tt.username, 20, tt.wantOffset)
 
 			if tt.wantErr != nil {
@@ -214,7 +214,7 @@ func TestGetReviewsFromMovieByID(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 			reviews, err := svc.GetReviewsFromMovieByID(context.Background(), tt.movieID, tt.limit, tt.offset)
 
 			if tt.wantErr != nil {
@@ -279,7 +279,7 @@ func TestGetReviewByID(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 			review, err := svc.GetReviewByID(context.Background(), tt.reviewID)
 
 			if tt.wantErr != nil {
@@ -352,7 +352,7 @@ func TestCreateReviewForMovieByID(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 			review := domains.NewReview(42, 10, tt.score, "great", false)
 			created, err := svc.CreateReviewForMovieByID(context.Background(), review)
 
@@ -424,7 +424,7 @@ func TestDeleteReviewByID(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 			err := svc.DeleteReviewByID(context.Background(), tt.userID, tt.reviewID)
 
 			if tt.wantErr != nil {
@@ -544,7 +544,7 @@ func TestUpdateReviewByID(t *testing.T) {
 				},
 			}
 
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 			review, err := svc.UpdateReviewByID(context.Background(), tt.userID, tt.reviewID, tt.containsSpoilers, tt.content, tt.score)
 
 			if tt.wantErr != nil {
@@ -606,7 +606,7 @@ func TestGetAverageRatingForMovieByID(t *testing.T) {
 					return tt.rating, tt.repoErr
 				},
 			}
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 
 			got, err := svc.GetAverageRatingForMovieByID(context.Background(), tt.movieID)
 
@@ -663,7 +663,7 @@ func TestGetReviewsCountForMovieByID(t *testing.T) {
 					return tt.count, tt.repoErr
 				},
 			}
-			svc := NewReviewService(reviewRepo, nil, nil, nil)
+			svc := NewReviewService(reviewRepo, nil, nil)
 
 			got, err := svc.GetReviewsCountForMovieByID(context.Background(), tt.movieID)
 

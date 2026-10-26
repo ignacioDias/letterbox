@@ -25,18 +25,16 @@ type reviewService struct {
 	reviewRepository repositories.ReviewRepository
 	userRepository   repositories.UserRepository
 	blockRepository  repositories.BlockRepository
-	movieRepository  repositories.MovieRepository
 }
 
 var ErrInvalidScore = errors.New("invalid score: must be between 1 and 10")
 var ErrReviewContentTooLong = errors.New("review content is too long: must be less than 10000 characters")
 
-func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewService {
+func NewReviewService(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository) ReviewService {
 	return &reviewService{
 		reviewRepository: reviewRepo,
 		userRepository:   userRepo,
 		blockRepository:  blockRepo,
-		movieRepository:  movieRepo,
 	}
 }
 

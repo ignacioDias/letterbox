@@ -31,7 +31,7 @@ func NewRouter(db *database.Database) Router {
 		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
 		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
-		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, db.MovieRepository),
+		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository),
 		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
 		movieHandler:    handlers.NewMovieHandler(services.NewMovieService(db.MovieRepository)),
 		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),

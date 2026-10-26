@@ -39,9 +39,9 @@ type UpdateReviewReq struct {
 	ContainsSpoilers *bool   `json:"containsSpoilers,omitempty"`
 }
 
-func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, movieRepo repositories.MovieRepository) ReviewHandler {
+func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository) ReviewHandler {
 	return &reviewHandler{
-		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo, movieRepo),
+		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo),
 	}
 }
 

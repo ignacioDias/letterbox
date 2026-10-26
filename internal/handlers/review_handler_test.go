@@ -124,7 +124,7 @@ func TestGetReviewsFromUserByUsernameHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, userRepo, blockRepo, nil)
+			handler := NewReviewHandler(reviewRepo, userRepo, blockRepo)
 			rec := authenticatedReviewRequest(t, handler.GetReviewsFromUserByUsername, tt.requesterID, tt.username, tt.query)
 
 			if rec.Code != tt.wantStatus {
@@ -138,7 +138,7 @@ func TestGetReviewsFromUserByUsernameHandler(t *testing.T) {
 }
 
 func TestGetReviewsFromUserByUsernameHandlerWithoutAuth(t *testing.T) {
-	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.SetPathValue("username", "grace")
 	rec := httptest.NewRecorder()
@@ -212,7 +212,7 @@ func TestGetReviewsFromMovieByIDHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/reviews"+tt.query, nil)
 			req.SetPathValue("movie_id", tt.movieID)
 			rec := httptest.NewRecorder()
@@ -290,7 +290,7 @@ func TestGetReviewByIDHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/"+tt.reviewID, nil)
 			req.SetPathValue("review_id", tt.reviewID)
 			rec := httptest.NewRecorder()
@@ -398,7 +398,7 @@ func TestCreateReviewForMovieByIDHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 			rec := authenticatedCreateReviewRequest(t, handler.CreateReviewForMovieByID, 7, tt.movieID, tt.body)
 
 			if rec.Code != tt.wantStatus {
@@ -417,7 +417,7 @@ func TestCreateReviewForMovieByIDHandler(t *testing.T) {
 }
 
 func TestCreateReviewForMovieByIDHandlerWithoutAuth(t *testing.T) {
-	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/movies/10/reviews", strings.NewReader(`{"score":8}`))
 	req.SetPathValue("movie_id", "10")
 	rec := httptest.NewRecorder()
@@ -506,7 +506,7 @@ func TestDeleteReviewByIDHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 			rec := authenticatedDeleteReviewRequest(t, handler.DeleteReviewByID, 7, tt.reviewID)
 
 			if rec.Code != tt.wantStatus {
@@ -520,7 +520,7 @@ func TestDeleteReviewByIDHandler(t *testing.T) {
 }
 
 func TestDeleteReviewByIDHandlerWithoutAuth(t *testing.T) {
-	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/reviews/10", nil)
 	req.SetPathValue("review_id", "10")
 	rec := httptest.NewRecorder()
@@ -647,7 +647,7 @@ func TestUpdateReviewByIDHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 			rec := authenticatedUpdateReviewRequest(t, handler.UpdateReviewByID, 7, tt.reviewID, tt.body)
 
 			if rec.Code != tt.wantStatus {
@@ -666,7 +666,7 @@ func TestUpdateReviewByIDHandler(t *testing.T) {
 }
 
 func TestUpdateReviewByIDHandlerWithoutAuth(t *testing.T) {
-	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+	handler := NewReviewHandler(&testutil.FakeReviewRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/reviews/10", strings.NewReader(`{"score":9}`))
 	req.SetPathValue("review_id", "10")
 	rec := httptest.NewRecorder()
@@ -709,7 +709,7 @@ func TestGetAverageRatingForMovieByIDHandler(t *testing.T) {
 					return tt.rating, tt.repoErr
 				},
 			}
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/reviews/average", nil)
 			req.SetPathValue("movie_id", tt.movieID)
@@ -766,7 +766,7 @@ func TestGetReviewsCountForMovieByIDHandler(t *testing.T) {
 					return tt.count, tt.repoErr
 				},
 			}
-			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, nil)
+			handler := NewReviewHandler(reviewRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/reviews/count", nil)
 			req.SetPathValue("movie_id", tt.movieID)
