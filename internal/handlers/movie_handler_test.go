@@ -10,19 +10,25 @@ import (
 
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
+	"letterbox/internal/services"
 )
 
 type fakeMovieService struct {
 	getMovieByIDFunc      func(ctx context.Context, movieID int32) (*domains.Movie, error)
-	getTrendingMoviesFunc func(ctx context.Context, page string) (*domains.TrendingMovies, error)
+	getTrendingMoviesFunc func(ctx context.Context, page string) (*domains.PaginatedMovies, error)
+	getSimilarMoviesFunc  func(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 }
 
 func (f *fakeMovieService) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
 	return f.getMovieByIDFunc(ctx, movieID)
 }
 
-func (f *fakeMovieService) GetTrendingMovies(ctx context.Context, page string) (*domains.TrendingMovies, error) {
+func (f *fakeMovieService) GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error) {
 	return f.getTrendingMoviesFunc(ctx, page)
+}
+
+func (f *fakeMovieService) GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
+	return f.getSimilarMoviesFunc(ctx, movieID, page)
 }
 
 func TestGetMovieByIDHandler(t *testing.T) {
@@ -90,7 +96,7 @@ func TestGetMovieByIDHandler(t *testing.T) {
 
 func TestGetTrendingMoviesHandler(t *testing.T) {
 	genericErr := errors.New("tmdb unavailable")
-	want := &domains.TrendingMovies{
+	want := &domains.PaginatedMovies{
 		Page:         2,
 		TotalPages:   20,
 		TotalResults: 400,
@@ -103,7 +109,7 @@ func TestGetTrendingMoviesHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		query      string
-		trending   *domains.TrendingMovies
+		trending   *domains.PaginatedMovies
 		serviceErr error
 		wantStatus int
 		wantCalled bool
@@ -119,7 +125,7 @@ func TestGetTrendingMoviesHandler(t *testing.T) {
 			called := false
 			var gotPage string
 			movieService := &fakeMovieService{
-				getTrendingMoviesFunc: func(_ context.Context, page string) (*domains.TrendingMovies, error) {
+				getTrendingMoviesFunc: func(_ context.Context, page string) (*domains.PaginatedMovies, error) {
 					called = true
 					gotPage = page
 					return tt.trending, tt.serviceErr
@@ -144,7 +150,95 @@ func TestGetTrendingMoviesHandler(t *testing.T) {
 			if tt.wantStatus != http.StatusOK {
 				return
 			}
-			var got domains.TrendingMovies
+			var got domains.PaginatedMovies
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.Page != want.Page || got.TotalPages != want.TotalPages || got.TotalResults != want.TotalResults {
+				t.Fatalf("unexpected metadata: %+v", got)
+			}
+			if len(got.Results) != len(want.Results) {
+				t.Fatalf("returned %d movies; want %d", len(got.Results), len(want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != want.Results[i].TMDBID || got.Results[i].Title != want.Results[i].Title {
+					t.Fatalf("unexpected result %d: %+v", i, got.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetSimilarMoviesHandler(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	want := &domains.PaginatedMovies{
+		Page:         3,
+		TotalPages:   10,
+		TotalResults: 200,
+		Results: []*domains.Movie{
+			{TMDBID: 20, Title: "Interstellar", PosterPath: "/interstellar.jpg"},
+			{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		movieID    string
+		query      string
+		similar    *domains.PaginatedMovies
+		serviceErr error
+		wantStatus int
+		wantCalled bool
+		wantPage   string
+	}{
+		{name: "success", movieID: "550", query: "?page=3", similar: want, wantStatus: http.StatusOK, wantCalled: true, wantPage: "3"},
+		{name: "omitted page", movieID: "550", similar: want, wantStatus: http.StatusOK, wantCalled: true, wantPage: ""},
+		{name: "invalid movie ID", movieID: "abc", query: "?page=1", wantStatus: http.StatusBadRequest},
+		{name: "zero movie ID", movieID: "0", wantStatus: http.StatusBadRequest},
+		{name: "invalid page", movieID: "550", query: "?page=abc", serviceErr: services.ErrInvalidPage, wantStatus: http.StatusBadRequest, wantCalled: true, wantPage: "abc"},
+		{name: "movie not found", movieID: "550", query: "?page=1", serviceErr: repositories.ErrMovieNotFound, wantStatus: http.StatusNotFound, wantCalled: true, wantPage: "1"},
+		{name: "service error", movieID: "550", query: "?page=1", serviceErr: genericErr, wantStatus: http.StatusInternalServerError, wantCalled: true, wantPage: "1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			var gotMovieID int32
+			var gotPage string
+			movieService := &fakeMovieService{
+				getSimilarMoviesFunc: func(_ context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
+					called = true
+					gotMovieID = movieID
+					gotPage = page
+					return tt.similar, tt.serviceErr
+				},
+			}
+			handler := NewMovieHandler(movieService)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/similar"+tt.query, nil)
+			req.SetPathValue("movie_id", tt.movieID)
+			rec := httptest.NewRecorder()
+
+			handler.GetSimilarMovies(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d; want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if called != tt.wantCalled {
+				t.Fatalf("service called = %v; want %v", called, tt.wantCalled)
+			}
+			if tt.wantCalled {
+				if gotMovieID != 550 {
+					t.Fatalf("service called with movieID %d; want 550", gotMovieID)
+				}
+				if gotPage != tt.wantPage {
+					t.Fatalf("service called with page %q; want %q", gotPage, tt.wantPage)
+				}
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got domains.PaginatedMovies
 			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 				t.Fatalf("decode response: %v", err)
 			}

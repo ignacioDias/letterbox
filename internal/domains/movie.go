@@ -9,7 +9,7 @@ type Movie struct {
 	CachedAt   time.Time `json:"cachedAt" db:"cached_at"`
 }
 
-type TrendingMovies struct {
+type PaginatedMovies struct {
 	Page         int64    `json:"page"`
 	TotalPages   int64    `json:"totalPages"`
 	TotalResults int64    `json:"totalResults"`
@@ -22,5 +22,14 @@ func NewMovie(tmdbID int32, title, posterPath string, cachedAt time.Time) *Movie
 		Title:      title,
 		PosterPath: posterPath,
 		CachedAt:   cachedAt,
+	}
+}
+
+func NewPaginatedMovies(page, totalPages, totalResults int64, results []*Movie) *PaginatedMovies {
+	return &PaginatedMovies{
+		Page:         page,
+		TotalPages:   totalPages,
+		TotalResults: totalResults,
+		Results:      results,
 	}
 }

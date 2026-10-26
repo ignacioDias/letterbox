@@ -16,12 +16,14 @@ import (
 
 type MovieService interface {
 	GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error)
-	GetTrendingMovies(ctx context.Context, page string) (*domains.TrendingMovies, error)
+	GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error)
+	GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 }
 
 type tmdbMovieGetter interface {
 	GetMovieDetails(id int, urlOptions map[string]string) (*tmdb.MovieDetails, error)
 	GetTrending(mediaType, timeWindow string, urlOptions map[string]string) (*tmdb.Trending, error)
+	GetMovieSimilar(mediaID int, urlOptions map[string]string) (*tmdb.MovieSimilar, error)
 }
 
 const tmdbNotFoundStatusCode = 34
@@ -86,15 +88,19 @@ func (s *movieService) getMovieFromTMDB(ctx context.Context, movieID int32) (*do
 
 	movie, err := client.GetMovieDetails(int(movieID), nil)
 	if err != nil {
-		var tmdbErr tmdb.Error
-		if errors.As(err, &tmdbErr) && tmdbErr.StatusCode == tmdbNotFoundStatusCode {
+		if isTMDBNotFound(err) {
 			return nil, repositories.ErrMovieNotFound
 		}
 		return nil, err
 	}
 	return convertTMDBMovieToDomainMovie(movie), nil
 }
-func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*domains.TrendingMovies, error) {
+
+func isTMDBNotFound(err error) bool {
+	var tmdbErr tmdb.Error
+	return errors.As(err, &tmdbErr) && tmdbErr.StatusCode == tmdbNotFoundStatusCode
+}
+func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error) {
 	if page == "" {
 		page = "1"
 	}
@@ -116,20 +122,7 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 
 	results := s.convertTMDBTrendingToDomainMovies(ctx, trending)
 
-	return &domains.TrendingMovies{
-		Page:         trending.Page,
-		TotalPages:   trending.TotalPages,
-		TotalResults: trending.TotalResults,
-		Results:      results,
-	}, nil
-}
-
-func isValidPage(page string) bool {
-	n, err := strconv.Atoi(page)
-	if err != nil {
-		return false
-	}
-	return n >= 1 && n <= maxTMDBPage
+	return domains.NewPaginatedMovies(trending.Page, trending.TotalPages, trending.TotalResults, results), nil
 }
 
 func (s *movieService) convertTMDBTrendingToDomainMovies(ctx context.Context, trending *tmdb.Trending) []*domains.Movie {
@@ -147,6 +140,53 @@ func (s *movieService) convertTMDBTrendingToDomainMovies(ctx context.Context, tr
 	}
 	return domainMovies
 }
+
+func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
+	if page == "" {
+		page = "1"
+	}
+	if ok := isValidPage(page); !ok {
+		return nil, ErrInvalidPage
+	}
+	tmdbClient, err := s.newTMDBClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	options := make(map[string]string)
+	options["page"] = page
+	similarMovies, err := tmdbClient.GetMovieSimilar(int(movieID), options)
+	if err != nil {
+		if isTMDBNotFound(err) {
+			return nil, repositories.ErrMovieNotFound
+		}
+		return nil, err
+	}
+	results := s.convertTMDBSimilarToDomainMovies(ctx, similarMovies)
+	return domains.NewPaginatedMovies(similarMovies.Page, similarMovies.TotalPages, similarMovies.TotalResults, results), nil
+}
+func isValidPage(page string) bool {
+	n, err := strconv.Atoi(page)
+	if err != nil {
+		return false
+	}
+	return n >= 1 && n <= maxTMDBPage
+}
+func (s *movieService) convertTMDBSimilarToDomainMovies(ctx context.Context, similar *tmdb.MovieSimilar) []*domains.Movie {
+	if similar == nil || len(similar.Results) == 0 {
+		return []*domains.Movie{}
+	}
+	var domainMovies []*domains.Movie
+	domainMovies = make([]*domains.Movie, 0, len(similar.Results))
+	for _, result := range similar.Results {
+		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
+		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
+			log.Printf("Error saving movie to repository: %v", err)
+		}
+		domainMovies = append(domainMovies, domainMovie)
+	}
+	return domainMovies
+}
+
 func convertTMDBMovieToDomainMovie(tmdbMovie *tmdb.MovieDetails) *domains.Movie {
 	return &domains.Movie{
 		TMDBID:     int32(tmdbMovie.ID),

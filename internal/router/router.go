@@ -88,11 +88,11 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/comments/{comment_id}/reaction", r.auth.Authenticate(r.reactionHandler.RemoveReactionFromCommentByID))
 
 	// Movie routes
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID) //TODO
-	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.) //TODO
-	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.) //TODO
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID) // TODO
 	// r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.) //TODO
-	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies) //TODO
+	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)
 
 	// Comment routes
 

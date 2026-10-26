@@ -20,12 +20,20 @@ type trendingCall struct {
 	options    map[string]string
 }
 
+type similarCall struct {
+	movieID int
+	options map[string]string
+}
+
 type fakeTMDBMovieGetter struct {
 	movie         *tmdb.MovieDetails
 	err           error
 	trending      *tmdb.Trending
 	trendingErr   error
 	trendingCalls []trendingCall
+	similar       *tmdb.MovieSimilar
+	similarErr    error
+	similarCalls  []similarCall
 }
 
 func (f *fakeTMDBMovieGetter) GetMovieDetails(int, map[string]string) (*tmdb.MovieDetails, error) {
@@ -37,6 +45,11 @@ func (f *fakeTMDBMovieGetter) GetTrending(mediaType, timeWindow string, options 
 	return f.trending, f.trendingErr
 }
 
+func (f *fakeTMDBMovieGetter) GetMovieSimilar(movieID int, options map[string]string) (*tmdb.MovieSimilar, error) {
+	f.similarCalls = append(f.similarCalls, similarCall{movieID: movieID, options: options})
+	return f.similar, f.similarErr
+}
+
 func mustParseTrending(t *testing.T, body string) *tmdb.Trending {
 	t.Helper()
 	var trending tmdb.Trending
@@ -44,6 +57,15 @@ func mustParseTrending(t *testing.T, body string) *tmdb.Trending {
 		t.Fatalf("parse trending fixture: %v", err)
 	}
 	return &trending
+}
+
+func mustParseSimilar(t *testing.T, body string) *tmdb.MovieSimilar {
+	t.Helper()
+	var similar tmdb.MovieSimilar
+	if err := json.Unmarshal([]byte(body), &similar); err != nil {
+		t.Fatalf("parse similar fixture: %v", err)
+	}
+	return &similar
 }
 
 func TestGetMovieByID(t *testing.T) {
@@ -221,7 +243,7 @@ func TestGetTrendingMovies(t *testing.T) {
 			{"id": 11, "title": "Dune", "poster_path": "/dune.jpg"}
 		]
 	}`)
-	want := &domains.TrendingMovies{
+	want := &domains.PaginatedMovies{
 		Page:         2,
 		TotalPages:   20,
 		TotalResults: 400,
@@ -242,7 +264,7 @@ func TestGetTrendingMovies(t *testing.T) {
 		wantTMDB    bool
 		wantPage    string
 		wantSaved   []int32
-		want        *domains.TrendingMovies
+		want        *domains.PaginatedMovies
 	}{
 		{
 			name:      "returns trending movies with pagination metadata",
@@ -373,6 +395,177 @@ func TestGetTrendingMovies(t *testing.T) {
 					got.Results[i].Title != tt.want.Results[i].Title ||
 					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
 					t.Fatalf("GetTrendingMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetSimilarMovies(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	similar := mustParseSimilar(t, `{
+		"page": 3,
+		"total_pages": 10,
+		"total_results": 200,
+		"results": [
+			{"id": 20, "title": "Interstellar", "poster_path": "/interstellar.jpg"},
+			{"id": 21, "title": "Contact", "poster_path": "/contact.jpg"}
+		]
+	}`)
+	want := &domains.PaginatedMovies{
+		Page:         3,
+		TotalPages:   10,
+		TotalResults: 200,
+		Results: []*domains.Movie{
+			{TMDBID: 20, Title: "Interstellar", PosterPath: "/interstellar.jpg"},
+			{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		movieID    int32
+		page       string
+		similar    *tmdb.MovieSimilar
+		similarErr error
+		clientErr  error
+		saveErr    error
+		wantErr    error
+		wantTMDB   bool
+		wantPage   string
+		wantSaved  []int32
+		want       *domains.PaginatedMovies
+	}{
+		{
+			name:      "returns similar movies with pagination metadata",
+			movieID:   550,
+			page:      "3",
+			similar:   similar,
+			wantTMDB:  true,
+			wantPage:  "3",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+		{
+			name:      "omitted page defaults to page 1",
+			movieID:   550,
+			page:      "",
+			similar:   similar,
+			wantTMDB:  true,
+			wantPage:  "1",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+		{name: "non-numeric page", movieID: 550, page: "abc", wantErr: ErrInvalidPage},
+		{name: "zero page", movieID: 550, page: "0", wantErr: ErrInvalidPage},
+		{name: "page above maximum", movieID: 550, page: "501", wantErr: ErrInvalidPage},
+		{
+			name:      "tmdb client error",
+			movieID:   550,
+			page:      "1",
+			clientErr: genericErr,
+			wantErr:   genericErr,
+		},
+		{
+			name:       "movie not found in tmdb",
+			movieID:    550,
+			page:       "1",
+			similarErr: tmdb.Error{StatusCode: tmdbNotFoundStatusCode},
+			wantErr:    repositories.ErrMovieNotFound,
+			wantTMDB:   true,
+			wantPage:   "1",
+		},
+		{
+			name:       "tmdb error",
+			movieID:    550,
+			page:       "1",
+			similarErr: genericErr,
+			wantErr:    genericErr,
+			wantTMDB:   true,
+			wantPage:   "1",
+		},
+		{
+			name:      "save error does not fail the request",
+			movieID:   550,
+			page:      "1",
+			similar:   similar,
+			saveErr:   genericErr,
+			wantTMDB:  true,
+			wantPage:  "1",
+			wantSaved: []int32{20, 21},
+			want:      want,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var saved []int32
+			movieRepo := &testutil.FakeMovieRepository{
+				SaveMovieFunc: func(_ context.Context, movie *domains.Movie) error {
+					saved = append(saved, movie.TMDBID)
+					return tt.saveErr
+				},
+			}
+			client := &fakeTMDBMovieGetter{similar: tt.similar, similarErr: tt.similarErr}
+			svc := &movieService{
+				movieRepository: movieRepo,
+				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return client, nil
+				},
+			}
+
+			got, err := svc.GetSimilarMovies(context.Background(), tt.movieID, tt.page)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetSimilarMovies() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetSimilarMovies() error = %v; want nil", err)
+			}
+
+			if tt.wantTMDB {
+				if len(client.similarCalls) != 1 {
+					t.Fatalf("TMDB GetMovieSimilar called %d times; want 1", len(client.similarCalls))
+				}
+				if client.similarCalls[0].movieID != int(tt.movieID) {
+					t.Fatalf("TMDB GetMovieSimilar(%d); want %d", client.similarCalls[0].movieID, tt.movieID)
+				}
+				if got := client.similarCalls[0].options["page"]; got != tt.wantPage {
+					t.Fatalf("TMDB page option = %q; want %q", got, tt.wantPage)
+				}
+			} else if len(client.similarCalls) != 0 {
+				t.Fatalf("TMDB GetMovieSimilar called %d times; want 0", len(client.similarCalls))
+			}
+
+			if !slices.Equal(saved, tt.wantSaved) {
+				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("GetSimilarMovies() = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("GetSimilarMovies() = nil; want result")
+			}
+			if got.Page != tt.want.Page || got.TotalPages != tt.want.TotalPages || got.TotalResults != tt.want.TotalResults {
+				t.Fatalf("GetSimilarMovies() metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+					got.Page, got.TotalPages, got.TotalResults, tt.want.Page, tt.want.TotalPages, tt.want.TotalResults)
+			}
+			if len(got.Results) != len(tt.want.Results) {
+				t.Fatalf("GetSimilarMovies() returned %d movies; want %d", len(got.Results), len(tt.want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != tt.want.Results[i].TMDBID ||
+					got.Results[i].Title != tt.want.Results[i].Title ||
+					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
+					t.Fatalf("GetSimilarMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
 				}
 			}
 		})

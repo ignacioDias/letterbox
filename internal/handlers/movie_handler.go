@@ -11,6 +11,8 @@ import (
 type MovieHandler interface {
 	GetMovieByID(w http.ResponseWriter, r *http.Request)
 	GetTrendingMovies(w http.ResponseWriter, r *http.Request)
+	GetRecommendationsForMovieByID(w http.ResponseWriter, r *http.Request)
+	GetSimilarMovies(w http.ResponseWriter, r *http.Request)
 }
 
 type movieHandler struct {
@@ -58,3 +60,29 @@ func (h *movieHandler) GetTrendingMovies(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, trending)
 }
+
+func (h *movieHandler) GetSimilarMovies(w http.ResponseWriter, r *http.Request) {
+	page := r.URL.Query().Get("page")
+	movieID, err := getInt32PathValue(r, "movie_id")
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	similarMovies, err := h.movieService.GetSimilarMovies(r.Context(), movieID, page)
+	if errors.Is(err, services.ErrInvalidPage) {
+		http.Error(w, "Invalid page parameter", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, repositories.ErrMovieNotFound) {
+		http.Error(w, "Movie not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error getting similar movies: %v", err)
+		http.Error(w, "Error getting similar movies", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, similarMovies)
+}
+
+func (h *movieHandler) GetRecommendationsForMovieByID(w http.ResponseWriter, r *http.Request) {}
