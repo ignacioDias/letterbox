@@ -71,6 +71,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))
 
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)
+	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID)
 	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))
 	r.mux.HandleFunc("PATCH /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.UpdateReviewByID))
 	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.DeleteReviewByID))
@@ -91,7 +92,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.) //TODO
 	// r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.) //TODO
 	// r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.) //TODO
-	// r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.) //TODO
+	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies) //TODO
 
 	// Comment routes
 

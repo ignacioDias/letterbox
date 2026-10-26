@@ -11,7 +11,7 @@ import (
 
 type MovieRepository interface {
 	SaveMovie(ctx context.Context, movie *domains.Movie) error
-	GetMovieByID(ctx context.Context, movieID int64) (*domains.Movie, error)
+	GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error)
 }
 
 type movieRepository struct {
@@ -29,7 +29,7 @@ func (r *movieRepository) SaveMovie(ctx context.Context, movie *domains.Movie) e
 	return r.db.QueryRowxContext(ctx, query, movie.TMDBID, movie.Title, movie.PosterPath).Scan(&movie.CachedAt)
 }
 
-func (r *movieRepository) GetMovieByID(ctx context.Context, movieID int64) (*domains.Movie, error) {
+func (r *movieRepository) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
 	query := `SELECT tmdb_id, title, poster_path, cached_at FROM movies WHERE tmdb_id = $1`
 	var movie domains.Movie
 	if err := r.db.GetContext(ctx, &movie, query, movieID); err != nil {

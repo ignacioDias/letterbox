@@ -205,13 +205,13 @@ type FakeMovieRepository struct {
 	repositories.MovieRepository
 
 	SaveMovieFunc    func(ctx context.Context, movie *domains.Movie) error
-	GetMovieByIDFunc func(ctx context.Context, movieID int64) (*domains.Movie, error)
+	GetMovieByIDFunc func(ctx context.Context, movieID int32) (*domains.Movie, error)
 }
 
 func (f *FakeMovieRepository) SaveMovie(ctx context.Context, movie *domains.Movie) error {
 	return f.SaveMovieFunc(ctx, movie)
 }
 
-func (f *FakeMovieRepository) GetMovieByID(ctx context.Context, movieID int64) (*domains.Movie, error) {
+func (f *FakeMovieRepository) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
 	return f.GetMovieByIDFunc(ctx, movieID)
 }

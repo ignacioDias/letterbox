@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"letterbox/internal/domains"
@@ -12,13 +14,36 @@ import (
 	tmdb "github.com/cyruzin/golang-tmdb"
 )
 
+type trendingCall struct {
+	mediaType  string
+	timeWindow string
+	options    map[string]string
+}
+
 type fakeTMDBMovieGetter struct {
-	movie *tmdb.MovieDetails
-	err   error
+	movie         *tmdb.MovieDetails
+	err           error
+	trending      *tmdb.Trending
+	trendingErr   error
+	trendingCalls []trendingCall
 }
 
 func (f *fakeTMDBMovieGetter) GetMovieDetails(int, map[string]string) (*tmdb.MovieDetails, error) {
 	return f.movie, f.err
+}
+
+func (f *fakeTMDBMovieGetter) GetTrending(mediaType, timeWindow string, options map[string]string) (*tmdb.Trending, error) {
+	f.trendingCalls = append(f.trendingCalls, trendingCall{mediaType: mediaType, timeWindow: timeWindow, options: options})
+	return f.trending, f.trendingErr
+}
+
+func mustParseTrending(t *testing.T, body string) *tmdb.Trending {
+	t.Helper()
+	var trending tmdb.Trending
+	if err := json.Unmarshal([]byte(body), &trending); err != nil {
+		t.Fatalf("parse trending fixture: %v", err)
+	}
+	return &trending
 }
 
 func TestGetMovieByID(t *testing.T) {
@@ -96,7 +121,7 @@ func TestGetMovieByID(t *testing.T) {
 			var savedMovie *domains.Movie
 
 			movieRepo := &testutil.FakeMovieRepository{
-				GetMovieByIDFunc: func(_ context.Context, movieID int64) (*domains.Movie, error) {
+				GetMovieByIDFunc: func(_ context.Context, movieID int32) (*domains.Movie, error) {
 					if movieID != 10 {
 						t.Fatalf("GetMovieByID(%d); want 10", movieID)
 					}
@@ -161,7 +186,7 @@ func TestGetMovieByIDPropagatesContextToTMDBClient(t *testing.T) {
 	ctx := context.WithValue(context.Background(), contextKey{}, "request")
 
 	movieRepo := &testutil.FakeMovieRepository{
-		GetMovieByIDFunc: func(context.Context, int64) (*domains.Movie, error) {
+		GetMovieByIDFunc: func(context.Context, int32) (*domains.Movie, error) {
 			return nil, repositories.ErrMovieNotFound
 		},
 		SaveMovieFunc: func(context.Context, *domains.Movie) error {
@@ -182,5 +207,174 @@ func TestGetMovieByIDPropagatesContextToTMDBClient(t *testing.T) {
 	}
 	if gotContext == nil || gotContext.Value(contextKey{}) != "request" {
 		t.Fatal("GetMovieByID() did not propagate the request context to the TMDB client")
+	}
+}
+
+func TestGetTrendingMovies(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	trending := mustParseTrending(t, `{
+		"page": 2,
+		"total_pages": 20,
+		"total_results": 400,
+		"results": [
+			{"id": 10, "title": "Arrival", "poster_path": "/arrival.jpg"},
+			{"id": 11, "title": "Dune", "poster_path": "/dune.jpg"}
+		]
+	}`)
+	want := &domains.TrendingMovies{
+		Page:         2,
+		TotalPages:   20,
+		TotalResults: 400,
+		Results: []*domains.Movie{
+			{TMDBID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"},
+			{TMDBID: 11, Title: "Dune", PosterPath: "/dune.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name        string
+		page        string
+		trending    *tmdb.Trending
+		trendingErr error
+		clientErr   error
+		saveErr     error
+		wantErr     error
+		wantTMDB    bool
+		wantPage    string
+		wantSaved   []int32
+		want        *domains.TrendingMovies
+	}{
+		{
+			name:      "returns trending movies with pagination metadata",
+			page:      "2",
+			trending:  trending,
+			wantTMDB:  true,
+			wantPage:  "2",
+			wantSaved: []int32{10, 11},
+			want:      want,
+		},
+		{
+			name:      "omitted page defaults to page 1",
+			page:      "",
+			trending:  trending,
+			wantTMDB:  true,
+			wantPage:  "1",
+			wantSaved: []int32{10, 11},
+			want:      want,
+		},
+		{
+			name:      "maximum page is accepted",
+			page:      "500",
+			trending:  trending,
+			wantTMDB:  true,
+			wantPage:  "500",
+			wantSaved: []int32{10, 11},
+			want:      want,
+		},
+		{name: "non-numeric page", page: "abc", wantErr: ErrInvalidPage},
+		{name: "zero page", page: "0", wantErr: ErrInvalidPage},
+		{name: "negative page", page: "-1", wantErr: ErrInvalidPage},
+		{name: "page above maximum", page: "501", wantErr: ErrInvalidPage},
+		{name: "fractional page", page: "1.5", wantErr: ErrInvalidPage},
+		{
+			name:      "tmdb client error",
+			page:      "1",
+			clientErr: genericErr,
+			wantErr:   genericErr,
+			wantTMDB:  false,
+		},
+		{
+			name:        "tmdb error",
+			page:        "1",
+			trendingErr: genericErr,
+			wantErr:     genericErr,
+			wantTMDB:    true,
+			wantPage:    "1",
+		},
+		{
+			name:      "save error does not fail the request",
+			page:      "1",
+			trending:  trending,
+			saveErr:   genericErr,
+			wantTMDB:  true,
+			wantPage:  "1",
+			wantSaved: []int32{10, 11},
+			want:      want,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var saved []int32
+			movieRepo := &testutil.FakeMovieRepository{
+				SaveMovieFunc: func(_ context.Context, movie *domains.Movie) error {
+					saved = append(saved, movie.TMDBID)
+					return tt.saveErr
+				},
+			}
+			client := &fakeTMDBMovieGetter{trending: tt.trending, trendingErr: tt.trendingErr}
+			svc := &movieService{
+				movieRepository: movieRepo,
+				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return client, nil
+				},
+			}
+
+			got, err := svc.GetTrendingMovies(context.Background(), tt.page)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetTrendingMovies() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetTrendingMovies() error = %v; want nil", err)
+			}
+
+			if tt.wantTMDB {
+				if len(client.trendingCalls) != 1 {
+					t.Fatalf("TMDB GetTrending called %d times; want 1", len(client.trendingCalls))
+				}
+				call := client.trendingCalls[0]
+				if call.mediaType != "movie" || call.timeWindow != "day" {
+					t.Fatalf("TMDB GetTrending(%q, %q); want movie, day", call.mediaType, call.timeWindow)
+				}
+				if call.options["page"] != tt.wantPage {
+					t.Fatalf("TMDB page option = %q; want %q", call.options["page"], tt.wantPage)
+				}
+			} else if len(client.trendingCalls) != 0 {
+				t.Fatalf("TMDB GetTrending called %d times; want 0", len(client.trendingCalls))
+			}
+
+			if !slices.Equal(saved, tt.wantSaved) {
+				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("GetTrendingMovies() = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("GetTrendingMovies() = nil; want result")
+			}
+			if got.Page != tt.want.Page || got.TotalPages != tt.want.TotalPages || got.TotalResults != tt.want.TotalResults {
+				t.Fatalf("GetTrendingMovies() metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+					got.Page, got.TotalPages, got.TotalResults, tt.want.Page, tt.want.TotalPages, tt.want.TotalResults)
+			}
+			if len(got.Results) != len(tt.want.Results) {
+				t.Fatalf("GetTrendingMovies() returned %d movies; want %d", len(got.Results), len(tt.want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != tt.want.Results[i].TMDBID ||
+					got.Results[i].Title != tt.want.Results[i].Title ||
+					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
+					t.Fatalf("GetTrendingMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
+				}
+			}
+		})
 	}
 }

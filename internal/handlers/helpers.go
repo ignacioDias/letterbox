@@ -16,6 +16,8 @@ const (
 	passwordBodyLimit = 1 << 10  // 1 KiB
 	userBodyLimit     = 4 << 10  // 4 KiB
 	reviewBodyLimit   = 64 << 10 // 64 KiB
+	defaultListLimit  = 20
+	maxListLimit      = 100
 )
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

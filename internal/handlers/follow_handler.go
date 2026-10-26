@@ -9,11 +9,6 @@ import (
 	"net/http"
 )
 
-const (
-	defaultListLimit = 20
-	maxListLimit     = 100
-)
-
 type FollowHandler interface {
 	FollowUserByUsername(w http.ResponseWriter, r *http.Request)
 	UnfollowUserByUsername(w http.ResponseWriter, r *http.Request)

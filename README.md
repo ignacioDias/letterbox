@@ -153,7 +153,7 @@ disconnects), stores it in `movies`, and returns it. Responses use `tmdbId`, `ti
 `posterPath`, and `cachedAt`, where `cachedAt` is the timestamp at which the movie was
 first cached.
 
-It returns `400 Bad Request` for IDs that are not positive 64-bit integers, `404 Not
+It returns `400 Bad Request` for IDs that are not positive 32-bit integers, `404 Not
 Found` if TMDB has no such movie, and `500 Internal Server Error` for other TMDB or
 database failures, including a missing `TMDB_API_KEY`. The cache never expires, and
 search/trending/similar/recommendations endpoints are not implemented.
