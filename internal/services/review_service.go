@@ -15,6 +15,7 @@ type ReviewService interface {
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error)
+	GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error)
 	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 }
@@ -78,6 +79,10 @@ func (s *reviewService) GetReviewsFromMovieByID(ctx context.Context, movieID int
 
 func (s *reviewService) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
 	return s.reviewRepository.GetReviewByID(ctx, reviewID)
+}
+
+func (s *reviewService) GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error) {
+	return s.reviewRepository.GetAverageRatingForMovieByID(ctx, movieID)
 }
 
 func (s *reviewService) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {

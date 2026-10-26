@@ -16,6 +16,7 @@ type ReviewHandler interface {
 	GetReviewsFromFollowingUsers(w http.ResponseWriter, r *http.Request)
 	GetReviewsFromMovieByID(w http.ResponseWriter, r *http.Request)
 	GetReviewByID(w http.ResponseWriter, r *http.Request)
+	GetAverageRatingForMovieByID(w http.ResponseWriter, r *http.Request)
 	UpdateReviewByID(w http.ResponseWriter, r *http.Request)
 	DeleteReviewByID(w http.ResponseWriter, r *http.Request)
 }
@@ -169,6 +170,25 @@ func (h *reviewHandler) GetReviewByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, review)
+}
+
+func (h *reviewHandler) GetAverageRatingForMovieByID(w http.ResponseWriter, r *http.Request) {
+	movieID, err := getInt32PathValue(r, "movie_id")
+	if err != nil {
+		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
+		return
+	}
+	averageRating, err := h.reviewService.GetAverageRatingForMovieByID(r.Context(), movieID)
+	if errors.Is(err, repositories.ErrMovieNotFound) {
+		http.Error(w, "Movie not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("get average rating for movie by ID: %v", err)
+		http.Error(w, "Failed to get average rating", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]float64{"averageRating": averageRating})
 }
 
 func (h *reviewHandler) UpdateReviewByID(w http.ResponseWriter, r *http.Request) {

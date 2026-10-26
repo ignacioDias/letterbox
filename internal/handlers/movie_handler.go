@@ -79,7 +79,7 @@ func handlePaginatedMoviesByID(w http.ResponseWriter, r *http.Request, fetch pag
 		return
 	}
 	movies, err := fetch(r.Context(), movieID, r.URL.Query().Get("page"))
-	if ok := writePaginatedMoviesError(w, err, label); !ok {
+	if writePaginatedMoviesError(w, err, label) {
 		return
 	}
 	writeJSON(w, http.StatusOK, movies)

@@ -15,6 +15,7 @@ type ReviewRepository interface {
 	GetReviewsFromFollowingUsers(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
 	GetReviewsFromMovieByID(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
 	GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error)
+	GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error)
 	UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 	DeleteReviewByID(ctx context.Context, userID int64, reviewID int64) error
 }
@@ -106,6 +107,25 @@ func (r *reviewRepository) GetReviewsFromMovieByID(ctx context.Context, movieID 
 		return nil, err
 	}
 	return reviews, nil
+}
+
+func (r *reviewRepository) GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error) {
+	var averageRating float64
+	query := `
+		SELECT COALESCE(AVG(r.score), 0)::float8
+		FROM movies m
+		LEFT JOIN reviews r ON r.movie_id = m.tmdb_id
+		WHERE m.tmdb_id = $1
+		GROUP BY m.tmdb_id
+	`
+	err := r.db.GetContext(ctx, &averageRating, query, movieID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrMovieNotFound
+		}
+		return 0, err
+	}
+	return averageRating, nil
 }
 
 func (r *reviewRepository) UpdateReviewByID(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error) {

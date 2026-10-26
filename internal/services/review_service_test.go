@@ -569,3 +569,60 @@ func TestUpdateReviewByID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAverageRatingForMovieByID(t *testing.T) {
+	genericErr := errors.New("database unavailable")
+
+	tests := []struct {
+		name       string
+		movieID    int32
+		rating     float64
+		repoErr    error
+		wantErr    error
+		wantRating float64
+	}{
+		{name: "success", movieID: 550, rating: 7.5, wantRating: 7.5},
+		{name: "no reviews", movieID: 550, rating: 0, wantRating: 0},
+		{
+			name:    "movie not found",
+			movieID: 550,
+			repoErr: repositories.ErrMovieNotFound,
+			wantErr: repositories.ErrMovieNotFound,
+		},
+		{
+			name:    "repository error",
+			movieID: 550,
+			repoErr: genericErr,
+			wantErr: genericErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMovieID int32
+			reviewRepo := &testutil.FakeReviewRepository{
+				GetAverageRatingForMovieByIDFunc: func(_ context.Context, movieID int32) (float64, error) {
+					gotMovieID = movieID
+					return tt.rating, tt.repoErr
+				},
+			}
+			svc := NewReviewService(reviewRepo, nil, nil, nil)
+
+			got, err := svc.GetAverageRatingForMovieByID(context.Background(), tt.movieID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetAverageRatingForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetAverageRatingForMovieByID() error = %v; want nil", err)
+			}
+			if got != tt.wantRating {
+				t.Fatalf("GetAverageRatingForMovieByID() = %v; want %v", got, tt.wantRating)
+			}
+			if gotMovieID != tt.movieID {
+				t.Fatalf("GetAverageRatingForMovieByID() called with movieID %d; want %d", gotMovieID, tt.movieID)
+			}
+		})
+	}
+}

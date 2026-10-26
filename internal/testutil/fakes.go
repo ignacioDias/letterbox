@@ -124,12 +124,13 @@ func (f *FakeFollowRepository) FollowUser(ctx context.Context, userIDFollower, u
 type FakeReviewRepository struct {
 	repositories.ReviewRepository
 
-	GetReviewsFromUserByUserIDFunc func(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
-	GetReviewsFromMovieByIDFunc    func(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
-	GetReviewByIDFunc              func(ctx context.Context, reviewID int64) (*domains.Review, error)
-	CreateReviewForMovieByIDFunc   func(ctx context.Context, review *domains.Review) (*domains.Review, error)
-	DeleteReviewByIDFunc           func(ctx context.Context, userID int64, reviewID int64) error
-	UpdateReviewByIDFunc           func(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
+	GetReviewsFromUserByUserIDFunc   func(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error)
+	GetReviewsFromMovieByIDFunc      func(ctx context.Context, movieID int32, limit, offset int) ([]*domains.Review, error)
+	GetReviewByIDFunc                func(ctx context.Context, reviewID int64) (*domains.Review, error)
+	GetAverageRatingForMovieByIDFunc func(ctx context.Context, movieID int32) (float64, error)
+	CreateReviewForMovieByIDFunc     func(ctx context.Context, review *domains.Review) (*domains.Review, error)
+	DeleteReviewByIDFunc             func(ctx context.Context, userID int64, reviewID int64) error
+	UpdateReviewByIDFunc             func(ctx context.Context, userID int64, reviewID int64, containsSpoilers *bool, content *string, score *int16) (*domains.Review, error)
 }
 
 func (f *FakeReviewRepository) GetReviewsFromUserByUserID(ctx context.Context, userID int64, limit, offset int) ([]*domains.Review, error) {
@@ -142,6 +143,10 @@ func (f *FakeReviewRepository) GetReviewsFromMovieByID(ctx context.Context, movi
 
 func (f *FakeReviewRepository) GetReviewByID(ctx context.Context, reviewID int64) (*domains.Review, error) {
 	return f.GetReviewByIDFunc(ctx, reviewID)
+}
+
+func (f *FakeReviewRepository) GetAverageRatingForMovieByID(ctx context.Context, movieID int32) (float64, error) {
+	return f.GetAverageRatingForMovieByIDFunc(ctx, movieID)
 }
 
 func (f *FakeReviewRepository) CreateReviewForMovieByID(ctx context.Context, review *domains.Review) (*domains.Review, error) {
