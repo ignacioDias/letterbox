@@ -44,7 +44,7 @@ func TestRegisterUser(t *testing.T) {
 			}
 			svc := NewAuthService(userRepo, &testutil.FakeSessionRepository{})
 
-			user, err := svc.RegisterUser(context.Background(), tt.username, tt.email, tt.password, "AR")
+			user, err := svc.RegisterUser(context.Background(), tt.username, tt.email, tt.password, "", "AR")
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
@@ -63,6 +63,9 @@ func TestRegisterUser(t *testing.T) {
 			}
 			if user.Username != "ada" || user.Email != "ada@example.com" || user.Country != "AR" {
 				t.Fatalf("unexpected user: %+v", user)
+			}
+			if user.ProfilePictureURL != DefaultProfilePictureURL {
+				t.Fatalf("ProfilePictureURL = %q; want %q", user.ProfilePictureURL, DefaultProfilePictureURL)
 			}
 			if user.PasswordHash == tt.password {
 				t.Fatal("password was not hashed")

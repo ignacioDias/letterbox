@@ -21,10 +21,11 @@ type authHandler struct {
 }
 
 type RegisterUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Country  string `json:"country"`
+	Username       string `json:"username"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
+	ProfilePicture string `json:"profilePicture"`
+	Country        string `json:"country"`
 }
 
 type LoginUserRequest struct {
@@ -44,7 +45,7 @@ func (a *authHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &registerReq, authBodyLimit) {
 		return
 	}
-	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.Country)
+	user, err := a.authServices.RegisterUser(r.Context(), registerReq.Username, registerReq.Email, registerReq.Password, registerReq.ProfilePicture, registerReq.Country)
 	if errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidEmail) || errors.Is(err, services.ErrInvalidPassword) || errors.Is(err, services.ErrInvalidCountry) {
 		http.Error(w, "Invalid user data", http.StatusBadRequest)
 		return

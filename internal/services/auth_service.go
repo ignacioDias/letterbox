@@ -12,10 +12,12 @@ import (
 
 const dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
 
+const DefaultProfilePictureURL = "/static/profile_pictures/gener_pp.jpg"
+
 type AuthService interface {
 	CreateSession(ctx context.Context, userID int64) (*domains.Session, error)
 	DeleteSession(ctx context.Context, sessionID string) error
-	RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error)
+	RegisterUser(ctx context.Context, username, email, password, profilePicture, country string) (*domains.User, error)
 	LoginUser(ctx context.Context, emailOrUsername, password string) (*domains.User, error)
 }
 
@@ -55,9 +57,10 @@ func (s *authService) DeleteSession(ctx context.Context, sessionID string) error
 	return s.sessionRepository.DeleteSessionByID(ctx, sessionID)
 }
 
-func (s *authService) RegisterUser(ctx context.Context, username, email, password, country string) (*domains.User, error) {
+func (s *authService) RegisterUser(ctx context.Context, username, email, password, profilePicture, country string) (*domains.User, error) {
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(email)
+	profilePicture = strings.TrimSpace(profilePicture)
 	country = strings.TrimSpace(country)
 
 	if err := validateUsername(username); err != nil {
@@ -77,7 +80,10 @@ func (s *authService) RegisterUser(ctx context.Context, username, email, passwor
 	if err != nil {
 		return nil, err
 	}
-	user := domains.NewUser(username, email, hashedPassword, "", country)
+	if profilePicture == "" {
+		profilePicture = DefaultProfilePictureURL
+	}
+	user := domains.NewUser(username, email, hashedPassword, profilePicture, country)
 	userID, err := s.userRepository.CreateUser(ctx, user)
 	if err != nil {
 		return nil, err
