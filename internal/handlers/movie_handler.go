@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"log"
@@ -46,43 +48,54 @@ func (h *movieHandler) GetMovieByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, movie)
 }
 
+type paginatedMoviesFetcher func(ctx context.Context, page string) (*domains.PaginatedMovies, error)
+
+type paginatedMoviesByIDFetcher func(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
+
 func (h *movieHandler) GetTrendingMovies(w http.ResponseWriter, r *http.Request) {
-	page := r.URL.Query().Get("page")
-	trending, err := h.movieService.GetTrendingMovies(r.Context(), page)
-	if errors.Is(err, services.ErrInvalidPage) {
-		http.Error(w, "Invalid page parameter", http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		log.Printf("Error getting trending movies: %v", err)
-		http.Error(w, "Error getting trending movies", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, trending)
+	handlePaginatedMovies(w, r, h.movieService.GetTrendingMovies, "trending movies")
 }
 
 func (h *movieHandler) GetSimilarMovies(w http.ResponseWriter, r *http.Request) {
-	page := r.URL.Query().Get("page")
+	handlePaginatedMoviesByID(w, r, h.movieService.GetSimilarMovies, "similar movies")
+}
+
+func (h *movieHandler) GetRecommendationsForMovieByID(w http.ResponseWriter, r *http.Request) {
+	handlePaginatedMoviesByID(w, r, h.movieService.GetRecommendationsForMovieByID, "recommended movies")
+}
+
+func handlePaginatedMovies(w http.ResponseWriter, r *http.Request, fetch paginatedMoviesFetcher, label string) {
+	movies, err := fetch(r.Context(), r.URL.Query().Get("page"))
+	if writePaginatedMoviesError(w, err, label) {
+		return
+	}
+	writeJSON(w, http.StatusOK, movies)
+}
+
+func handlePaginatedMoviesByID(w http.ResponseWriter, r *http.Request, fetch paginatedMoviesByIDFetcher, label string) {
 	movieID, err := getInt32PathValue(r, "movie_id")
 	if err != nil {
 		http.Error(w, "Invalid movie ID", http.StatusBadRequest)
 		return
 	}
-	similarMovies, err := h.movieService.GetSimilarMovies(r.Context(), movieID, page)
-	if errors.Is(err, services.ErrInvalidPage) {
-		http.Error(w, "Invalid page parameter", http.StatusBadRequest)
+	movies, err := fetch(r.Context(), movieID, r.URL.Query().Get("page"))
+	if ok := writePaginatedMoviesError(w, err, label); !ok {
 		return
 	}
-	if errors.Is(err, repositories.ErrMovieNotFound) {
-		http.Error(w, "Movie not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("Error getting similar movies: %v", err)
-		http.Error(w, "Error getting similar movies", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, similarMovies)
+	writeJSON(w, http.StatusOK, movies)
 }
 
-func (h *movieHandler) GetRecommendationsForMovieByID(w http.ResponseWriter, r *http.Request) {}
+func writePaginatedMoviesError(w http.ResponseWriter, err error, label string) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, services.ErrInvalidPage):
+		http.Error(w, "Invalid page parameter", http.StatusBadRequest)
+	case errors.Is(err, repositories.ErrMovieNotFound):
+		http.Error(w, "Movie not found", http.StatusNotFound)
+	default:
+		log.Printf("Error getting %s: %v", label, err)
+		http.Error(w, "Error getting "+label, http.StatusInternalServerError)
+	}
+	return true
+}

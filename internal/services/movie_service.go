@@ -17,6 +17,7 @@ import (
 type MovieService interface {
 	GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error)
 	GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error)
+	GetRecommendationsForMovieByID(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 	GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error)
 }
 
@@ -24,6 +25,7 @@ type tmdbMovieGetter interface {
 	GetMovieDetails(id int, urlOptions map[string]string) (*tmdb.MovieDetails, error)
 	GetTrending(mediaType, timeWindow string, urlOptions map[string]string) (*tmdb.Trending, error)
 	GetMovieSimilar(mediaID int, urlOptions map[string]string) (*tmdb.MovieSimilar, error)
+	GetMovieRecommendations(mediaID int, urlOptions map[string]string) (*tmdb.MovieRecommendations, error)
 }
 
 const tmdbNotFoundStatusCode = 34
@@ -101,18 +103,16 @@ func isTMDBNotFound(err error) bool {
 	return errors.As(err, &tmdbErr) && tmdbErr.StatusCode == tmdbNotFoundStatusCode
 }
 func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*domains.PaginatedMovies, error) {
-	if page == "" {
-		page = "1"
-	}
-	if ok := isValidPage(page); !ok {
-		return nil, ErrInvalidPage
+	normalizedPage, err := normalizeAndValidatePage(page)
+	if err != nil {
+		return nil, err
 	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 	options := make(map[string]string)
-	options["page"] = page
+	options["page"] = normalizedPage
 
 	trending, err := tmdbClient.GetTrending("movie", "day", options)
 
@@ -141,19 +141,55 @@ func (s *movieService) convertTMDBTrendingToDomainMovies(ctx context.Context, tr
 	return domainMovies
 }
 
-func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
-	if page == "" {
-		page = "1"
-	}
-	if ok := isValidPage(page); !ok {
-		return nil, ErrInvalidPage
+func (s *movieService) GetRecommendationsForMovieByID(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
+	normalizedPage, err := normalizeAndValidatePage(page)
+	if err != nil {
+		return nil, err
 	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 	options := make(map[string]string)
-	options["page"] = page
+	options["page"] = normalizedPage
+	recommendations, err := tmdbClient.GetMovieRecommendations(int(movieID), options)
+	if err != nil {
+		if isTMDBNotFound(err) {
+			return nil, repositories.ErrMovieNotFound
+		}
+		return nil, err
+	}
+	results := s.convertTMDBRecommendationsToDomainMovies(ctx, recommendations)
+	return domains.NewPaginatedMovies(recommendations.Page, recommendations.TotalPages, recommendations.TotalResults, results), nil
+}
+
+func (s *movieService) convertTMDBRecommendationsToDomainMovies(ctx context.Context, recommendations *tmdb.MovieRecommendations) []*domains.Movie {
+	if recommendations == nil || len(recommendations.Results) == 0 {
+		return []*domains.Movie{}
+	}
+	var domainMovies []*domains.Movie
+	domainMovies = make([]*domains.Movie, 0, len(recommendations.Results))
+	for _, result := range recommendations.Results {
+		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
+		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
+			log.Printf("Error saving movie to repository: %v", err)
+		}
+		domainMovies = append(domainMovies, domainMovie)
+	}
+	return domainMovies
+}
+
+func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page string) (*domains.PaginatedMovies, error) {
+	normalizedPage, err := normalizeAndValidatePage(page)
+	if err != nil {
+		return nil, err
+	}
+	tmdbClient, err := s.newTMDBClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	options := make(map[string]string)
+	options["page"] = normalizedPage
 	similarMovies, err := tmdbClient.GetMovieSimilar(int(movieID), options)
 	if err != nil {
 		if isTMDBNotFound(err) {
@@ -164,6 +200,16 @@ func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page
 	results := s.convertTMDBSimilarToDomainMovies(ctx, similarMovies)
 	return domains.NewPaginatedMovies(similarMovies.Page, similarMovies.TotalPages, similarMovies.TotalResults, results), nil
 }
+func normalizeAndValidatePage(page string) (string, error) {
+	if page == "" {
+		return "1", nil
+	}
+	if ok := isValidPage(page); !ok {
+		return "", ErrInvalidPage
+	}
+	return page, nil
+}
+
 func isValidPage(page string) bool {
 	n, err := strconv.Atoi(page)
 	if err != nil {

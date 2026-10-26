@@ -25,15 +25,23 @@ type similarCall struct {
 	options map[string]string
 }
 
+type recommendationCall struct {
+	movieID int
+	options map[string]string
+}
+
 type fakeTMDBMovieGetter struct {
-	movie         *tmdb.MovieDetails
-	err           error
-	trending      *tmdb.Trending
-	trendingErr   error
-	trendingCalls []trendingCall
-	similar       *tmdb.MovieSimilar
-	similarErr    error
-	similarCalls  []similarCall
+	movie               *tmdb.MovieDetails
+	err                 error
+	trending            *tmdb.Trending
+	trendingErr         error
+	trendingCalls       []trendingCall
+	similar             *tmdb.MovieSimilar
+	similarErr          error
+	similarCalls        []similarCall
+	recommendations     *tmdb.MovieRecommendations
+	recommendationsErr  error
+	recommendationCalls []recommendationCall
 }
 
 func (f *fakeTMDBMovieGetter) GetMovieDetails(int, map[string]string) (*tmdb.MovieDetails, error) {
@@ -48,6 +56,11 @@ func (f *fakeTMDBMovieGetter) GetTrending(mediaType, timeWindow string, options 
 func (f *fakeTMDBMovieGetter) GetMovieSimilar(movieID int, options map[string]string) (*tmdb.MovieSimilar, error) {
 	f.similarCalls = append(f.similarCalls, similarCall{movieID: movieID, options: options})
 	return f.similar, f.similarErr
+}
+
+func (f *fakeTMDBMovieGetter) GetMovieRecommendations(movieID int, options map[string]string) (*tmdb.MovieRecommendations, error) {
+	f.recommendationCalls = append(f.recommendationCalls, recommendationCall{movieID: movieID, options: options})
+	return f.recommendations, f.recommendationsErr
 }
 
 func mustParseTrending(t *testing.T, body string) *tmdb.Trending {
@@ -66,6 +79,15 @@ func mustParseSimilar(t *testing.T, body string) *tmdb.MovieSimilar {
 		t.Fatalf("parse similar fixture: %v", err)
 	}
 	return &similar
+}
+
+func mustParseRecommendations(t *testing.T, body string) *tmdb.MovieRecommendations {
+	t.Helper()
+	var recommendations tmdb.MovieRecommendations
+	if err := json.Unmarshal([]byte(body), &recommendations); err != nil {
+		t.Fatalf("parse recommendations fixture: %v", err)
+	}
+	return &recommendations
 }
 
 func TestGetMovieByID(t *testing.T) {
@@ -566,6 +588,206 @@ func TestGetSimilarMovies(t *testing.T) {
 					got.Results[i].Title != tt.want.Results[i].Title ||
 					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
 					t.Fatalf("GetSimilarMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetRecommendationsForMovieByID(t *testing.T) {
+	genericErr := errors.New("tmdb unavailable")
+	recommendations := mustParseRecommendations(t, `{
+		"page": 4,
+		"total_pages": 8,
+		"total_results": 160,
+		"results": [
+			{"id": 30, "title": "Moon", "poster_path": "/moon.jpg"},
+			{"id": 31, "title": "Solaris", "poster_path": "/solaris.jpg"}
+		]
+	}`)
+	want := &domains.PaginatedMovies{
+		Page:         4,
+		TotalPages:   8,
+		TotalResults: 160,
+		Results: []*domains.Movie{
+			{TMDBID: 30, Title: "Moon", PosterPath: "/moon.jpg"},
+			{TMDBID: 31, Title: "Solaris", PosterPath: "/solaris.jpg"},
+		},
+	}
+
+	tests := []struct {
+		name            string
+		movieID         int32
+		page            string
+		recommendations *tmdb.MovieRecommendations
+		tmdbErr         error
+		clientErr       error
+		saveErr         error
+		wantErr         error
+		wantTMDB        bool
+		wantPage        string
+		wantSaved       []int32
+		want            *domains.PaginatedMovies
+	}{
+		{
+			name:            "returns recommendations with pagination metadata",
+			movieID:         550,
+			page:            "4",
+			recommendations: recommendations,
+			wantTMDB:        true,
+			wantPage:        "4",
+			wantSaved:       []int32{30, 31},
+			want:            want,
+		},
+		{
+			name:            "omitted page defaults to page 1",
+			movieID:         550,
+			page:            "",
+			recommendations: recommendations,
+			wantTMDB:        true,
+			wantPage:        "1",
+			wantSaved:       []int32{30, 31},
+			want:            want,
+		},
+		{
+			name:            "maximum page is accepted",
+			movieID:         550,
+			page:            "500",
+			recommendations: recommendations,
+			wantTMDB:        true,
+			wantPage:        "500",
+			wantSaved:       []int32{30, 31},
+			want:            want,
+		},
+		{
+			name:    "empty results",
+			movieID: 550,
+			page:    "1",
+			recommendations: mustParseRecommendations(t, `{
+				"page": 1,
+				"total_pages": 0,
+				"total_results": 0,
+				"results": []
+			}`),
+			wantTMDB: true,
+			wantPage: "1",
+			want: &domains.PaginatedMovies{
+				Page:         1,
+				TotalPages:   0,
+				TotalResults: 0,
+				Results:      []*domains.Movie{},
+			},
+		},
+		{name: "non-numeric page", movieID: 550, page: "abc", wantErr: ErrInvalidPage},
+		{name: "zero page", movieID: 550, page: "0", wantErr: ErrInvalidPage},
+		{name: "page above maximum", movieID: 550, page: "501", wantErr: ErrInvalidPage},
+		{
+			name:      "tmdb client error",
+			movieID:   550,
+			page:      "1",
+			clientErr: genericErr,
+			wantErr:   genericErr,
+		},
+		{
+			name:     "movie not found in tmdb",
+			movieID:  550,
+			page:     "1",
+			tmdbErr:  tmdb.Error{StatusCode: tmdbNotFoundStatusCode},
+			wantErr:  repositories.ErrMovieNotFound,
+			wantTMDB: true,
+			wantPage: "1",
+		},
+		{
+			name:     "tmdb error",
+			movieID:  550,
+			page:     "1",
+			tmdbErr:  genericErr,
+			wantErr:  genericErr,
+			wantTMDB: true,
+			wantPage: "1",
+		},
+		{
+			name:            "save error does not fail the request",
+			movieID:         550,
+			page:            "1",
+			recommendations: recommendations,
+			saveErr:         genericErr,
+			wantTMDB:        true,
+			wantPage:        "1",
+			wantSaved:       []int32{30, 31},
+			want:            want,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var saved []int32
+			movieRepo := &testutil.FakeMovieRepository{
+				SaveMovieFunc: func(_ context.Context, movie *domains.Movie) error {
+					saved = append(saved, movie.TMDBID)
+					return tt.saveErr
+				},
+			}
+			client := &fakeTMDBMovieGetter{recommendations: tt.recommendations, recommendationsErr: tt.tmdbErr}
+			svc := &movieService{
+				movieRepository: movieRepo,
+				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return client, nil
+				},
+			}
+
+			got, err := svc.GetRecommendationsForMovieByID(context.Background(), tt.movieID, tt.page)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetRecommendationsForMovieByID() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetRecommendationsForMovieByID() error = %v; want nil", err)
+			}
+
+			if tt.wantTMDB {
+				if len(client.recommendationCalls) != 1 {
+					t.Fatalf("TMDB GetMovieRecommendations called %d times; want 1", len(client.recommendationCalls))
+				}
+				if client.recommendationCalls[0].movieID != int(tt.movieID) {
+					t.Fatalf("TMDB GetMovieRecommendations(%d); want %d", client.recommendationCalls[0].movieID, tt.movieID)
+				}
+				if got := client.recommendationCalls[0].options["page"]; got != tt.wantPage {
+					t.Fatalf("TMDB page option = %q; want %q", got, tt.wantPage)
+				}
+			} else if len(client.recommendationCalls) != 0 {
+				t.Fatalf("TMDB GetMovieRecommendations called %d times; want 0", len(client.recommendationCalls))
+			}
+
+			if !slices.Equal(saved, tt.wantSaved) {
+				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("GetRecommendationsForMovieByID() = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("GetRecommendationsForMovieByID() = nil; want result")
+			}
+			if got.Page != tt.want.Page || got.TotalPages != tt.want.TotalPages || got.TotalResults != tt.want.TotalResults {
+				t.Fatalf("GetRecommendationsForMovieByID() metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+					got.Page, got.TotalPages, got.TotalResults, tt.want.Page, tt.want.TotalPages, tt.want.TotalResults)
+			}
+			if len(got.Results) != len(tt.want.Results) {
+				t.Fatalf("GetRecommendationsForMovieByID() returned %d movies; want %d", len(got.Results), len(tt.want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != tt.want.Results[i].TMDBID ||
+					got.Results[i].Title != tt.want.Results[i].Title ||
+					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
+					t.Fatalf("GetRecommendationsForMovieByID() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
 				}
 			}
 		})

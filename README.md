@@ -100,6 +100,7 @@ Base path: `/api/v1`
 | `DELETE` | `/reviews/{review_id}/reaction` | Yes | Implemented |
 | `GET` | `/movies/{movie_id}` | No | Implemented |
 | `GET` | `/movies/{movie_id}/similar` | No | Implemented |
+| `GET` | `/movies/{movie_id}/recommendations` | No | Implemented |
 | `GET` | `/movies/trending` | No | Implemented |
 
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
@@ -172,8 +173,14 @@ missing `TMDB_API_KEY`).
 movie. It accepts `page` (1-500, default `1`) and uses the same paginated response shape
 as trending, caching results best-effort. It returns `400 Bad Request` for invalid movie
 IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal Server Error`
-for other TMDB failures (including a missing `TMDB_API_KEY`). Search and recommendations
-are not implemented.
+for other TMDB failures (including a missing `TMDB_API_KEY`).
+
+`GET /movies/{movie_id}/recommendations` is public and returns TMDB's recommended
+movies for a movie. It accepts `page` (1-500, default `1`) and uses the same paginated
+response shape as trending, caching results best-effort. It returns `400 Bad Request` for
+invalid movie IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal
+Server Error` for other TMDB failures (including a missing `TMDB_API_KEY`). Search is not
+implemented.
 
 ### Request body limits
 
@@ -265,6 +272,12 @@ List movies similar to a given movie:
 curl -i "http://localhost:8080/api/v1/movies/550/similar?page=1"
 ```
 
+List movies recommended for a given movie:
+
+```bash
+curl -i "http://localhost:8080/api/v1/movies/550/recommendations?page=1"
+```
+
 Create a review (the movie must already be in the local cache):
 
 ```bash
@@ -337,7 +350,7 @@ go test -race ./...
 ```
 
 Unit tests cover services (including review listing, creation, update, deletion,
-reactions, and movie lookup, trending, and similar movies with a faked TMDB client),
+reactions, and movie lookup, trending, similar and recommended movies with a faked TMDB client),
 handlers (including movie status and page mapping, and JSON body limits), middleware,
 and repository helpers. They use fakes from `internal/testutil`. Repository integration
 tests are not included because they require a running PostgreSQL instance.
@@ -346,11 +359,11 @@ tests are not included because they require a running PostgreSQL instance.
 
 - Review listing (per user, following feed, and per movie), creation, reads by ID,
   partial updates, deletion, and like/dislike reactions are implemented.
-- Movie lookup, daily trending, and similar movies are implemented:
+- Movie lookup, daily trending, similar movies, and recommendations are implemented:
   `GET /movies/{movie_id}` reads the local `movies` cache and falls back to TMDB on a
-  miss, while `GET /movies/trending` and `GET /movies/{movie_id}/similar` paginate
-  TMDB results and cache them best-effort. The cache never expires, and search and
-  recommendations are not implemented.
+  miss, while `GET /movies/trending`, `GET /movies/{movie_id}/similar`, and
+  `GET /movies/{movie_id}/recommendations` paginate TMDB results and cache them
+  best-effort. The cache never expires, and search is not implemented.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
