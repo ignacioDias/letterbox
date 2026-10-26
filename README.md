@@ -402,6 +402,12 @@ a running PostgreSQL instance.
 
 ## TODO
 
-- make bookmarks movies
-- add google login
-- caché
+- **Movie bookmarks:** let authenticated users bookmark movies and manage a personal
+  saved-movies list. This needs a `bookmarks` table keyed by user and movie, plus
+  endpoints to add, remove, and list bookmarks with pagination.
+- **Google login:** add Google OAuth as an alternative sign-in/sign-up flow. It should
+  link a Google account to an existing user (or create one), then issue the same
+  cookie-based session as the current login endpoint.
+- **Caching:** improve the local TMDB cache — currently entries never expire. Add a TTL
+  or invalidation strategy, and consider caching other expensive or frequently requested
+  reads so responses stay fresh without hitting TMDB or Postgres unnecessarily.
