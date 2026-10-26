@@ -4,8 +4,9 @@ A REST API backend for a social movie-rating platform. Users can register, sign 
 with cookie-based sessions, manage their profile, follow other users, block or
 unblock them, and create, update, delete, and list reviews. Reviews can be listed per
 user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
-Movies can be looked up by TMDB id, with results cached locally. The data
-model is prepared for comments; comment endpoints are not implemented yet.
+Movies can be looked up by TMDB id or listed from TMDB's daily trending feed, with
+results cached locally. The data model is prepared for comments; comment endpoints are
+not implemented yet.
 
 ## Tech stack
 
@@ -98,6 +99,7 @@ Base path: `/api/v1`
 | `POST` | `/reviews/{review_id}/dislike` | Yes | Implemented |
 | `DELETE` | `/reviews/{review_id}/reaction` | Yes | Implemented |
 | `GET` | `/movies/{movie_id}` | No | Implemented |
+| `GET` | `/movies/trending` | No | Implemented |
 
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
 accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
@@ -155,8 +157,15 @@ first cached.
 
 It returns `400 Bad Request` for IDs that are not positive 32-bit integers, `404 Not
 Found` if TMDB has no such movie, and `500 Internal Server Error` for other TMDB or
-database failures, including a missing `TMDB_API_KEY`. The cache never expires, and
-search/trending/similar/recommendations endpoints are not implemented.
+database failures, including a missing `TMDB_API_KEY`. The cache never expires.
+
+`GET /movies/trending` is public and returns TMDB's daily trending movies. It accepts
+`page` (1-500, default `1`) and returns `page`, `totalPages`, `totalResults`, and a
+`results` array whose items use the same shape as movie lookups (`tmdbId`, `title`,
+`posterPath`, `cachedAt`). Trending results are cached in `movies` on a best-effort
+basis: cache write failures are logged but do not fail the request. It returns `400 Bad
+Request` for invalid pages and `500 Internal Server Error` for TMDB failures (including a
+missing `TMDB_API_KEY`). Search, similar, and recommendations are not implemented.
 
 ### Request body limits
 
@@ -236,6 +245,12 @@ Get a movie (served from the local cache, fetched from TMDB on a miss):
 curl -i http://localhost:8080/api/v1/movies/550
 ```
 
+List daily trending movies:
+
+```bash
+curl -i "http://localhost:8080/api/v1/movies/trending?page=1"
+```
+
 Create a review (the movie must already be in the local cache):
 
 ```bash
@@ -308,18 +323,20 @@ go test -race ./...
 ```
 
 Unit tests cover services (including review listing, creation, update, deletion,
-reactions, and movie lookup with a faked TMDB client), handlers (including movie status
-mapping and JSON body limits), middleware, and repository helpers. They use fakes from
-`internal/testutil`. Repository integration tests are not included because they require
-a running PostgreSQL instance.
+reactions, and movie lookup and trending with a faked TMDB client), handlers (including
+movie status and page mapping, and JSON body limits), middleware, and repository
+helpers. They use fakes from `internal/testutil`. Repository integration tests are not
+included because they require a running PostgreSQL instance.
 
 ## Notes and limitations
 
 - Review listing (per user, following feed, and per movie), creation, reads by ID,
   partial updates, deletion, and like/dislike reactions are implemented.
-- Movie lookup is implemented: `GET /movies/{movie_id}` reads the local `movies` cache
-  and falls back to TMDB on a miss. The cache never expires, and only get-by-id is
-  implemented (no search, trending, similar, or recommendations).
+- Movie lookup and daily trending are implemented: `GET /movies/{movie_id}` reads the
+  local `movies` cache and falls back to TMDB on a miss, and `GET /movies/trending`
+  paginates TMDB's daily trending movies and caches them best-effort. The cache never
+  expires, and only get-by-id and daily trending are implemented (no search, similar, or
+  recommendations).
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
