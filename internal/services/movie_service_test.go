@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/testutil"
@@ -118,35 +119,61 @@ func TestGetMovieByID(t *testing.T) {
 	tmdbMovie := &tmdb.MovieDetails{ID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"}
 
 	tests := []struct {
-		name      string
-		repoMovie *domains.Movie
-		repoErr   error
-		tmdbMovie *tmdb.MovieDetails
-		tmdbErr   error
-		clientErr error
-		saveErr   error
-		wantErr   error
-		wantMovie *domains.Movie
-		wantTMDB  bool
-		wantSave  bool
+		name            string
+		cacheMovie      *domains.Movie
+		cacheRawValue   string
+		cacheErr        error
+		cacheSetErr     error
+		repoMovie       *domains.Movie
+		repoErr         error
+		tmdbMovie       *tmdb.MovieDetails
+		tmdbErr         error
+		clientErr       error
+		saveErr         error
+		wantErr         error
+		wantMovie       *domains.Movie
+		wantTMDB        bool
+		wantSave        bool
+		wantRepo        bool
+		wantCacheSet    bool
+		wantCacheDelete bool
 	}{
 		{
-			name:      "returns cached movie",
-			repoMovie: cachedMovie,
-			wantMovie: cachedMovie,
+			name:         "returns movie from repository",
+			repoMovie:    cachedMovie,
+			wantMovie:    cachedMovie,
+			wantRepo:     true,
+			wantCacheSet: true,
 		},
 		{
-			name:      "fetches and caches from tmdb",
-			repoErr:   repositories.ErrMovieNotFound,
-			tmdbMovie: tmdbMovie,
-			wantMovie: &domains.Movie{TMDBID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"},
-			wantTMDB:  true,
-			wantSave:  true,
+			name:       "returns movie from cache",
+			cacheMovie: cachedMovie,
+			wantMovie:  cachedMovie,
 		},
 		{
-			name:    "repository error",
-			repoErr: genericErr,
-			wantErr: genericErr,
+			name:            "falls back to repository when cached value is corrupt",
+			cacheRawValue:   "{not json",
+			repoMovie:       cachedMovie,
+			wantMovie:       cachedMovie,
+			wantRepo:        true,
+			wantCacheSet:    true,
+			wantCacheDelete: true,
+		},
+		{
+			name:         "fetches and caches from tmdb",
+			repoErr:      repositories.ErrMovieNotFound,
+			tmdbMovie:    tmdbMovie,
+			wantMovie:    &domains.Movie{TMDBID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"},
+			wantTMDB:     true,
+			wantSave:     true,
+			wantRepo:     true,
+			wantCacheSet: true,
+		},
+		{
+			name:     "repository error",
+			repoErr:  genericErr,
+			wantErr:  genericErr,
+			wantRepo: true,
 		},
 		{
 			name:     "tmdb not found",
@@ -154,6 +181,7 @@ func TestGetMovieByID(t *testing.T) {
 			tmdbErr:  tmdb.Error{StatusCode: tmdbNotFoundStatusCode},
 			wantErr:  repositories.ErrMovieNotFound,
 			wantTMDB: true,
+			wantRepo: true,
 		},
 		{
 			name:     "tmdb error",
@@ -161,6 +189,7 @@ func TestGetMovieByID(t *testing.T) {
 			tmdbErr:  genericErr,
 			wantErr:  genericErr,
 			wantTMDB: true,
+			wantRepo: true,
 		},
 		{
 			name:      "tmdb client error",
@@ -168,6 +197,7 @@ func TestGetMovieByID(t *testing.T) {
 			clientErr: genericErr,
 			wantErr:   genericErr,
 			wantTMDB:  true,
+			wantRepo:  true,
 		},
 		{
 			name:      "save error",
@@ -177,6 +207,23 @@ func TestGetMovieByID(t *testing.T) {
 			wantErr:   genericErr,
 			wantTMDB:  true,
 			wantSave:  true,
+			wantRepo:  true,
+		},
+		{
+			name:         "falls back to repository when cache read fails",
+			cacheErr:     genericErr,
+			repoMovie:    cachedMovie,
+			wantMovie:    cachedMovie,
+			wantRepo:     true,
+			wantCacheSet: true,
+		},
+		{
+			name:         "returns movie when cache write fails",
+			repoMovie:    cachedMovie,
+			cacheSetErr:  genericErr,
+			wantMovie:    cachedMovie,
+			wantRepo:     true,
+			wantCacheSet: true,
 		},
 	}
 
@@ -184,10 +231,25 @@ func TestGetMovieByID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmdbCalls := 0
 			saveCalls := 0
+			repoCalls := 0
+			cacheSetCalls := 0
+			cacheDeleteCalls := 0
 			var savedMovie *domains.Movie
+			var cacheSetKey string
+			var cacheSetTTL int
+
+			cachedValue := tt.cacheRawValue
+			if tt.cacheMovie != nil {
+				value, err := json.Marshal(tt.cacheMovie)
+				if err != nil {
+					t.Fatalf("marshal cached movie: %v", err)
+				}
+				cachedValue = string(value)
+			}
 
 			movieRepo := &testutil.FakeMovieRepository{
 				GetMovieByIDFunc: func(_ context.Context, movieID int32) (*domains.Movie, error) {
+					repoCalls++
 					if movieID != 10 {
 						t.Fatalf("GetMovieByID(%d); want 10", movieID)
 					}
@@ -199,9 +261,34 @@ func TestGetMovieByID(t *testing.T) {
 					return tt.saveErr
 				},
 			}
+			fakeCache := &testutil.FakeCache{
+				GetFunc: func(_ context.Context, key string) (string, error) {
+					if key != getKeyForMovieByID(10) {
+						t.Fatalf("cache.Get(%q); want %q", key, getKeyForMovieByID(10))
+					}
+					if tt.cacheErr != nil {
+						return "", tt.cacheErr
+					}
+					if tt.cacheMovie == nil && tt.cacheRawValue == "" {
+						return "", cache.ErrKeyNotFound
+					}
+					return cachedValue, nil
+				},
+				SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+					cacheSetCalls++
+					cacheSetKey = key
+					cacheSetTTL = expiringTimeInSeconds
+					return tt.cacheSetErr
+				},
+				DeleteFunc: func(_ context.Context, _ []string) (int64, error) {
+					cacheDeleteCalls++
+					return 1, nil
+				},
+			}
 			client := &fakeTMDBMovieGetter{movie: tt.tmdbMovie, err: tt.tmdbErr}
 			svc := &movieService{
 				movieRepository: movieRepo,
+				cache:           fakeCache,
 				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
 					tmdbCalls++
 					if tt.clientErr != nil {
@@ -225,6 +312,23 @@ func TestGetMovieByID(t *testing.T) {
 			}
 			if got := saveCalls > 0; got != tt.wantSave {
 				t.Fatalf("SaveMovie called = %v; want %v", got, tt.wantSave)
+			}
+			if got := repoCalls > 0; got != tt.wantRepo {
+				t.Fatalf("GetMovieByID repository called = %v; want %v", got, tt.wantRepo)
+			}
+			if got := cacheSetCalls > 0; got != tt.wantCacheSet {
+				t.Fatalf("cache.Set called = %v; want %v", got, tt.wantCacheSet)
+			}
+			if tt.wantCacheSet {
+				if cacheSetKey != getKeyForMovieByID(10) {
+					t.Fatalf("cache.Set key = %q; want %q", cacheSetKey, getKeyForMovieByID(10))
+				}
+				if cacheSetTTL != movieCacheTTLSeconds {
+					t.Fatalf("cache.Set TTL = %d; want %d", cacheSetTTL, movieCacheTTLSeconds)
+				}
+			}
+			if got := cacheDeleteCalls > 0; got != tt.wantCacheDelete {
+				t.Fatalf("cache.Delete called = %v; want %v", got, tt.wantCacheDelete)
 			}
 			if tt.wantMovie == nil {
 				if movie != nil {
@@ -262,6 +366,14 @@ func TestGetMovieByIDPropagatesContextToTMDBClient(t *testing.T) {
 	var gotContext context.Context
 	svc := &movieService{
 		movieRepository: movieRepo,
+		cache: &testutil.FakeCache{
+			GetFunc: func(context.Context, string) (string, error) {
+				return "", cache.ErrKeyNotFound
+			},
+			SetFunc: func(context.Context, string, string, int) error {
+				return nil
+			},
+		},
 		newTMDBClient: func(ctx context.Context) (tmdbMovieGetter, error) {
 			gotContext = ctx
 			return &fakeTMDBMovieGetter{movie: &tmdb.MovieDetails{ID: 10}}, nil

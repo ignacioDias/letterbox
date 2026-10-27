@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -22,9 +23,9 @@ type movieHandler struct {
 	movieService services.MovieService
 }
 
-func NewMovieHandler(movieService services.MovieService) MovieHandler {
+func NewMovieHandler(movieRepo repositories.MovieRepository, cache cache.Cache) MovieHandler {
 	return &movieHandler{
-		movieService: movieService,
+		movieService: services.NewMovieService(movieRepo, cache),
 	}
 }
 

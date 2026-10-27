@@ -5,7 +5,6 @@ import (
 	"letterbox/internal/database"
 	"letterbox/internal/handlers"
 	"letterbox/internal/middleware"
-	"letterbox/internal/services"
 	"net/http"
 )
 
@@ -36,7 +35,7 @@ func NewRouter(db *database.Database, cache cache.Cache) Router {
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
 		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository),
 		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
-		movieHandler:    handlers.NewMovieHandler(services.NewMovieService(db.MovieRepository)),
+		movieHandler:    handlers.NewMovieHandler(db.MovieRepository, cache),
 		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
@@ -97,7 +96,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("assets"))))
 
 	// Movie routes
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)                                   //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)                       //TODO: Implement cache
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID) //TODO: Implement cache
 	r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies)                                       //TODO: Implement cache

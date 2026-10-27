@@ -6,6 +6,29 @@ import (
 	"letterbox/internal/repositories"
 )
 
+type FakeCache struct {
+	GetFunc    func(ctx context.Context, key string) (string, error)
+	SetFunc    func(ctx context.Context, key string, value string, expiringTimeInSeconds int) error
+	DeleteFunc func(ctx context.Context, keys []string) (int64, error)
+	CloseFunc  func()
+}
+
+func (f *FakeCache) Get(ctx context.Context, key string) (string, error) {
+	return f.GetFunc(ctx, key)
+}
+
+func (f *FakeCache) Set(ctx context.Context, key string, value string, expiringTimeInSeconds int) error {
+	return f.SetFunc(ctx, key, value, expiringTimeInSeconds)
+}
+
+func (f *FakeCache) Delete(ctx context.Context, keys []string) (int64, error) {
+	return f.DeleteFunc(ctx, keys)
+}
+
+func (f *FakeCache) CloseClient() {
+	f.CloseFunc()
+}
+
 type FakeUserRepository struct {
 	repositories.UserRepository
 

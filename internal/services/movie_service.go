@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"log"
@@ -35,12 +36,15 @@ const tmdbNotFoundStatusCode = 34
 
 const maxTMDBPage = 500
 
+var movieCacheTTLSeconds = 86400
+
 var ErrInvalidPage = errors.New("invalid page number")
 var ErrInvalidSearchQuery = errors.New("invalid search query")
 
 type movieService struct {
 	movieRepository repositories.MovieRepository
 	newTMDBClient   func(ctx context.Context) (tmdbMovieGetter, error)
+	cache           cache.Cache
 }
 
 type contextTransport struct {
@@ -48,7 +52,7 @@ type contextTransport struct {
 	base http.RoundTripper
 }
 
-func NewMovieService(movieRepository repositories.MovieRepository) MovieService {
+func NewMovieService(movieRepository repositories.MovieRepository, cache cache.Cache) MovieService {
 	apiKey := os.Getenv("TMDB_API_KEY")
 	return &movieService{
 		movieRepository: movieRepository,
@@ -62,6 +66,7 @@ func NewMovieService(movieRepository repositories.MovieRepository) MovieService 
 			})
 			return client, nil
 		},
+		cache: cache,
 	}
 }
 
@@ -69,8 +74,16 @@ func (t contextTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(req.WithContext(t.ctx))
 }
 func (s *movieService) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
-	movie, err := s.movieRepository.GetMovieByID(ctx, movieID)
+	movie, found, err := s.getMovieFromCache(ctx, movieID)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return movie, nil
+	}
+	movie, err = s.movieRepository.GetMovieByID(ctx, movieID)
 	if err == nil {
+		s.cacheMovie(ctx, movieID, movie)
 		return movie, nil
 	}
 	if !errors.Is(err, repositories.ErrMovieNotFound) {
@@ -83,7 +96,44 @@ func (s *movieService) GetMovieByID(ctx context.Context, movieID int32) (*domain
 	if err := s.movieRepository.SaveMovie(ctx, movie); err != nil {
 		return nil, err
 	}
+	s.cacheMovie(ctx, movieID, movie)
 	return movie, nil
+}
+
+func (s *movieService) getMovieFromCache(ctx context.Context, movieID int32) (*domains.Movie, bool, error) {
+	key := getKeyForMovieByID(movieID)
+	result, err := s.cache.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, cache.ErrKeyNotFound) {
+			return nil, false, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, false, ctxErr
+		}
+		log.Printf("Error reading movie %d from cache: %v", movieID, err)
+		return nil, false, nil
+	}
+	movie, err := generateMovieFromCacheResult(result)
+	if err == nil {
+		return movie, true, nil
+	}
+	log.Printf("Error decoding cached movie %d: %v", movieID, err)
+	if _, err := s.cache.Delete(ctx, []string{key}); err != nil {
+		log.Printf("Error deleting corrupt cached movie %d: %v", movieID, err)
+	}
+	return nil, false, nil
+}
+
+func (s *movieService) cacheMovie(ctx context.Context, movieID int32, movie *domains.Movie) {
+	value, err := generateCacheValueFromMovie(movie)
+	if err != nil {
+		log.Printf("Error encoding movie %d for cache: %v", movie.TMDBID, err)
+		return
+	}
+	key := getKeyForMovieByID(movieID)
+	if err := s.cache.Set(ctx, key, value, movieCacheTTLSeconds); err != nil {
+		log.Printf("Error saving movie to cache: %v", err)
+	}
 }
 
 func (s *movieService) getMovieFromTMDB(ctx context.Context, movieID int32) (*domains.Movie, error) {

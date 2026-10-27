@@ -73,7 +73,7 @@ func TestGetMovieByIDHandler(t *testing.T) {
 					return tt.movie, tt.movieErr
 				},
 			}
-			handler := NewMovieHandler(movieService)
+			handler := &movieHandler{movieService: movieService}
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID, nil)
 			req.SetPathValue("movie_id", tt.movieID)
@@ -141,7 +141,7 @@ func TestGetTrendingMoviesHandler(t *testing.T) {
 					return tt.trending, tt.serviceErr
 				},
 			}
-			handler := NewMovieHandler(movieService)
+			handler := &movieHandler{movieService: movieService}
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/trending"+tt.query, nil)
 			rec := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestGetSimilarMoviesHandler(t *testing.T) {
 					return tt.similar, tt.serviceErr
 				},
 			}
-			handler := NewMovieHandler(movieService)
+			handler := &movieHandler{movieService: movieService}
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/similar"+tt.query, nil)
 			req.SetPathValue("movie_id", tt.movieID)
@@ -311,7 +311,7 @@ func TestGetRecommendationsForMovieByIDHandler(t *testing.T) {
 					return tt.result, tt.serviceErr
 				},
 			}
-			handler := NewMovieHandler(movieService)
+			handler := &movieHandler{movieService: movieService}
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/"+tt.movieID+"/recommendations"+tt.query, nil)
 			req.SetPathValue("movie_id", tt.movieID)
@@ -397,7 +397,7 @@ func TestSearchMoviesHandler(t *testing.T) {
 					return tt.result, tt.serviceErr
 				},
 			}
-			handler := NewMovieHandler(movieService)
+			handler := &movieHandler{movieService: movieService}
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/movies/search"+tt.query, nil)
 			rec := httptest.NewRecorder()
