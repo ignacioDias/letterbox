@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"letterbox/internal/cache"
 	"letterbox/internal/database"
 	"letterbox/internal/repositories"
 	"letterbox/internal/router"
@@ -43,7 +44,11 @@ func main() {
 	}
 	go cleanupExpiredSessions(database.SessionRepository)
 
-	router := router.NewRouter(database)
+	cache := cache.NewCache()
+
+	defer cache.CloseClient()
+
+	router := router.NewRouter(database, cache)
 	server := server.NewServer(port, router)
 	server.StartServer(router)
 }

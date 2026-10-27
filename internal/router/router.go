@@ -1,6 +1,7 @@
 package router
 
 import (
+	"letterbox/internal/cache"
 	"letterbox/internal/database"
 	"letterbox/internal/handlers"
 	"letterbox/internal/middleware"
@@ -14,6 +15,7 @@ type Router interface {
 
 type router struct {
 	mux             *http.ServeMux
+	cache           cache.Cache
 	authHandler     handlers.AuthHandler
 	userHandler     handlers.UserHandler
 	followHandler   handlers.FollowHandler
@@ -24,9 +26,10 @@ type router struct {
 	auth            middleware.AuthenticationMiddleware
 }
 
-func NewRouter(db *database.Database) Router {
+func NewRouter(db *database.Database, cache cache.Cache) Router {
 	return &router{
 		mux:             http.NewServeMux(),
+		cache:           cache,
 		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
 		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
 		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
@@ -46,20 +49,20 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/auth/logout", r.auth.Authenticate(r.authHandler.LogoutUser))
 
 	// User routes
-	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
+	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser)) //TODO: Implement cache
 	r.mux.HandleFunc("DELETE /api/v1/users/me", r.auth.Authenticate(r.userHandler.DeleteCurrentUser))
 	r.mux.HandleFunc("PUT /api/v1/users/me", r.auth.Authenticate(r.userHandler.UpdateCurrentUser))
 	r.mux.HandleFunc("PUT /api/v1/users/me/password", r.auth.Authenticate(r.userHandler.UpdateCurrentUserPassword))
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/{user_id}", r.userHandler.GetUserByID)
-	r.mux.HandleFunc("GET /api/v1/users/search", r.userHandler.SearchUsers)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/{user_id}", r.userHandler.GetUserByID)                 //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/search", r.userHandler.SearchUsers)                    //TODO: Implement cache
 
 	// Follow routes
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowersCountByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)            //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowersCountByUsername) //TODO: Implement cache
 
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowingCountByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)            //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowingCountByUsername) //TODO: Implement cache
 
 	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.auth.Authenticate(r.followHandler.FollowUserByUsername))
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.auth.Authenticate(r.followHandler.UnfollowUserByUsername))
@@ -69,17 +72,17 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/block", r.auth.Authenticate(r.blockHandler.UnblockUserByUsername))
 
 	//Review routes
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.auth.Authenticate(r.reviewHandler.GetReviewsFromUserByUsername))
-	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.auth.Authenticate(r.reviewHandler.GetReviewsFromUserByUsername)) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))                 //TODO: Implement cache
 
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID)
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/count", r.reviewHandler.GetReviewsCountForMovieByID)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)              //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/count", r.reviewHandler.GetReviewsCountForMovieByID)    //TODO: Implement cache
 	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))
 	r.mux.HandleFunc("PATCH /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.UpdateReviewByID))
 	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.DeleteReviewByID))
 
-	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID)
+	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID) //TODO: Implement cache
 
 	// Like and Dislike routes
 	r.mux.HandleFunc("POST /api/v1/reviews/{review_id}/like", r.auth.Authenticate(r.reactionHandler.LikeReviewByID))
@@ -94,15 +97,17 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("assets"))))
 
 	// Movie routes
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID)
-	r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies)
-	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}", r.movieHandler.GetMovieByID)                                   //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)                       //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies)                                       //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)                                //TODO: Implement cache
 
 	// Comment routes
 
 	// Messaging routes
+
+	// Bookmark routes
 
 	return r.mux
 }
