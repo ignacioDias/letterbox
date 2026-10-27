@@ -14,6 +14,7 @@ There is a [vibe coded frontend for this project](https://github.com/ignacioDias
 
 - **Go 1.27** with the standard `net/http` router (`ServeMux` patterns)
 - **PostgreSQL 17** (via Docker Compose)
+- **Valkey 8** (via Docker Compose) for caching, through **valkey-glide**
 - **sqlx** + **pgx** for database access
 - **golang-tmdb** for movie metadata, cached in PostgreSQL
 - **bcrypt** for password hashing
@@ -24,6 +25,7 @@ There is a [vibe coded frontend for this project](https://github.com/ignacioDias
 ```
 cmd/letterbox/          Application entry point
 internal/
+  cache/                Valkey client and cache interface
   database/             Connection wiring, schema creation
   domains/              Domain models (User, Session, Review, Reaction, Movie, PublicUser)
   handlers/             HTTP handlers
@@ -52,14 +54,21 @@ docker compose up -d
 go run ./cmd/letterbox
 ```
 
-The API listens on `http://localhost:8080` by default. The schema is created
-automatically on startup; there is no separate migration step.
+The API listens on `http://localhost:8080` by default. `docker compose up -d` starts
+PostgreSQL and Valkey; the server connects to Valkey at `localhost:6379` unless
+`VALKEY_HOST`/`VALKEY_PORT` say otherwise. It exits at startup if either service is
+unreachable. The schema is created automatically on startup; there is no separate
+migration step.
 
 ### Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | none (required) | PostgreSQL connection string |
+| `VALKEY_HOST` | `localhost` | Valkey host used by the Go server |
+| `VALKEY_PORT` | `6379` | Valkey port used by the Go server and mapped by Compose |
+| `VALKEY_USE_TLS` | `false` | Connect to Valkey over TLS |
+| `VALKEY_DATABASE_ID` | `0` | Valkey logical database index |
 | `PORT` | `8080` | HTTP listen port |
 | `APP_ENV` | `development` | Set to `production` to mark the session cookie `Secure` |
 | `POSTGRES_USER` | `letterbox` | Postgres user for the Compose container |
@@ -410,7 +419,9 @@ a running PostgreSQL instance.
   implemented: `GET /movies/{movie_id}` reads the local `movies` cache and falls back to
   TMDB on a miss, while `GET /movies/search`, `GET /movies/trending`,
   `GET /movies/{movie_id}/similar`, and `GET /movies/{movie_id}/recommendations` paginate
-  TMDB results and cache them best-effort. The cache never expires.
+  TMDB results and cache them best-effort. These entries live in PostgreSQL and never expire.
+- A Valkey cache client (`internal/cache`) with TTL support is created at startup, but no
+  handlers use it yet, so it currently caches nothing.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
@@ -428,6 +439,7 @@ a running PostgreSQL instance.
 - **Google login:** add Google OAuth as an alternative sign-in/sign-up flow. It should
   link a Google account to an existing user (or create one), then issue the same
   cookie-based session as the current login endpoint.
-- **Caching:** improve the local TMDB cache — currently entries never expire. Add a TTL
-  or invalidation strategy, and consider caching other expensive or frequently requested
-  reads so responses stay fresh without hitting TMDB or Postgres unnecessarily.
+- **Caching:** wire the existing Valkey client into expensive or frequently requested
+  reads, and add a TTL or invalidation strategy to the local TMDB cache, whose PostgreSQL
+  entries currently never expire. This keeps responses fresh without hitting TMDB or
+  Postgres unnecessarily.
