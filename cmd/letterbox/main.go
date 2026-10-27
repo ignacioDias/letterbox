@@ -44,11 +44,13 @@ func main() {
 	}
 	go cleanupExpiredSessions(database.SessionRepository)
 
-	cache := cache.NewCache()
+	cacheClient, err := cache.NewCache()
+	if err != nil {
+		log.Fatalf("Failed to initialize cache: %v", err)
+	}
+	defer cacheClient.CloseClient()
 
-	defer cache.CloseClient()
-
-	router := router.NewRouter(database, cache)
+	router := router.NewRouter(database, cacheClient)
 	server := server.NewServer(port, router)
 	server.StartServer(router)
 }

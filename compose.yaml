@@ -1,4 +1,19 @@
 services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: letterbox-valkey
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VALKEY_PORT:-6379}:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
   db:
     image: postgres:17-alpine
     container_name: letterbox-postgres
@@ -20,3 +35,4 @@ services:
 
 volumes:
   postgres_data:
+  valkey_data:

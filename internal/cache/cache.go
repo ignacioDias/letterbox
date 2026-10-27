@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 )
 
 type Cache interface {
-	Get(ctx context.Context, key string) (any, error)
+	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key string, value string, expiringTimeInSeconds int) error
 	Delete(ctx context.Context, keys []string) (int64, error)
 	CloseClient()
@@ -23,41 +24,67 @@ type cache struct {
 	client *glide.Client
 }
 
-func NewCache() Cache {
+var ErrKeyNotFound = errors.New("key not found")
+
+func NewCache() (Cache, error) {
 	host := os.Getenv("VALKEY_HOST")
+	if host == "" {
+		host = "localhost"
+	}
 	port := os.Getenv("VALKEY_PORT")
+	if port == "" {
+		port = "6379"
+	}
 	portNum, err := strconv.Atoi(port)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to convert port to integer: %v", err))
+		return nil, fmt.Errorf("invalid VALKEY_PORT %q: %w", port, err)
 	}
 
-	useTLSEnv := os.Getenv("VALKEY_USE_TLS")
-	useTLS := useTLSEnv == "true"
-	databaseIdEnv := os.Getenv("VALKEY_DATABASE_ID")
-	databaseId, err := strconv.Atoi(databaseIdEnv)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to convert database ID to integer: %v", err))
+	useTLS := false
+	if value := os.Getenv("VALKEY_USE_TLS"); value != "" {
+		useTLS, err = strconv.ParseBool(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid VALKEY_USE_TLS %q: %w", value, err)
+		}
 	}
-	config := config.NewClientConfiguration().
+
+	databaseID := 0
+	if value := os.Getenv("VALKEY_DATABASE_ID"); value != "" {
+		databaseID, err = strconv.Atoi(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid VALKEY_DATABASE_ID %q: %w", value, err)
+		}
+	}
+
+	cfg := config.NewClientConfiguration().
 		WithAddress(&config.NodeAddress{Host: host, Port: portNum}).
 		WithRequestTimeout(5 * time.Second).
 		WithUseTLS(useTLS).
-		WithDatabaseId(databaseId)
-	client, err := glide.NewClient(config)
+		WithDatabaseId(databaseID)
+	client, err := glide.NewClient(cfg)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to create Valkey Glide client: %v", err))
+		return nil, fmt.Errorf("failed to create Valkey Glide client: %w", err)
 	}
 	return &cache{
 		client: client,
-	}
-
+	}, nil
 }
 
-func (c *cache) Get(ctx context.Context, key string) (any, error) {
-	return c.client.Get(ctx, key)
+func (c *cache) Get(ctx context.Context, key string) (string, error) {
+	result, err := c.client.Get(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if result.IsNil() {
+		return "", ErrKeyNotFound
+	}
+	return result.Value(), nil
 }
 
 func (c *cache) Set(ctx context.Context, key string, value string, expiringTimeInSeconds int) error {
+	if expiringTimeInSeconds <= 0 {
+		return fmt.Errorf("expiring time makes no sense, must be greater than 0 seconds")
+	}
 	setOptions := options.SetOptions{
 		Expiry: options.NewExpiryIn(time.Duration(expiringTimeInSeconds) * time.Second),
 	}
