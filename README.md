@@ -448,3 +448,5 @@ a running PostgreSQL instance.
 - **Caching:** extend the Valkey cache beyond single-movie lookups (search, trending,
   similar, and recommendations), add short-lived negative caching for missing TMDB IDs,
   and consider TTL or invalidation for the PostgreSQL TMDB data, which never expires.
+- Comments: implement comments for reviews and, at the same time, comments itself.
+- Messaging system: for users that follow each other
