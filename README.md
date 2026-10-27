@@ -16,7 +16,7 @@ There is a [vibe coded frontend for this project](https://github.com/ignacioDias
 - **PostgreSQL 17** (via Docker Compose)
 - **Valkey 8** (via Docker Compose) for caching, through **valkey-glide**
 - **sqlx** + **pgx** for database access
-- **golang-tmdb** for movie metadata, cached in PostgreSQL
+- **golang-tmdb** for movie metadata, cached in Valkey and PostgreSQL
 - **bcrypt** for password hashing
 - **godotenv** for local environment loading
 
@@ -41,8 +41,9 @@ Requests flow through `router -> handler -> service -> repository`. Each domain 
 own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
 `BlockRepository`, `ReviewRepository`, `ReactionRepository`, `MovieRepository`) so SQL
 stays out of handlers and services. `MovieRepository` reads and writes a local `movies`
-table keyed by TMDB id; on a cache miss, `MovieService` fetches the movie from TMDB and
-stores it before returning it.
+table keyed by TMDB id. Movie lookups are served from Valkey first, then the `movies`
+table, and on a miss `MovieService` fetches the movie from TMDB and stores it in both
+before returning it.
 
 ## Getting started
 
@@ -184,15 +185,19 @@ reaction on it. All reaction routes require authentication.
 
 ### Movies
 
-`GET /movies/{movie_id}` is public and returns the movie from the local cache. On a
-cache miss it fetches the movie from TMDB (10-second timeout, cancelled if the client
-disconnects), stores it in `movies`, and returns it. Responses use `tmdbId`, `title`,
+`GET /movies/{movie_id}` is public. It first checks Valkey (24-hour TTL, key
+`tmdb:v1:movieID:<id>`), then the local `movies` table. On a miss it fetches the movie
+from TMDB (10-second timeout, cancelled if the client disconnects), stores it in
+`movies`, caches it in Valkey, and returns it. Responses use `tmdbId`, `title`,
 `posterPath`, and `cachedAt`, where `cachedAt` is the timestamp at which the movie was
 first cached.
 
 It returns `400 Bad Request` for IDs that are not positive 32-bit integers, `404 Not
 Found` if TMDB has no such movie, and `500 Internal Server Error` for other TMDB or
-database failures, including a missing `TMDB_API_KEY`. The cache never expires.
+database failures, including a missing `TMDB_API_KEY`. Cache read/write failures are
+logged and fall back to PostgreSQL, so they do not fail the request; corrupt cache
+entries are evicted. The `movies` table never expires, while the Valkey entry lasts 24
+hours.
 
 `GET /movies/trending` is public and returns TMDB's daily trending movies. It accepts
 `page` (1-500, default `1`) and returns `page`, `totalPages`, `totalResults`, and a
@@ -305,7 +310,7 @@ curl -i "http://localhost:8080/api/v1/movies/550/reviews/average"
 curl -i "http://localhost:8080/api/v1/movies/550/reviews/count"
 ```
 
-Get a movie (served from the local cache, fetched from TMDB on a miss):
+Get a movie (served from Valkey or the local database cache, fetched from TMDB on a miss):
 
 ```bash
 curl -i http://localhost:8080/api/v1/movies/550
@@ -416,12 +421,13 @@ a running PostgreSQL instance.
   counts, creation, reads by ID, partial updates, deletion, and like/dislike reactions
   are implemented.
 - Movie lookup, search, daily trending, similar movies, and recommendations are
-  implemented: `GET /movies/{movie_id}` reads the local `movies` cache and falls back to
-  TMDB on a miss, while `GET /movies/search`, `GET /movies/trending`,
-  `GET /movies/{movie_id}/similar`, and `GET /movies/{movie_id}/recommendations` paginate
-  TMDB results and cache them best-effort. These entries live in PostgreSQL and never expire.
-- A Valkey cache client (`internal/cache`) with TTL support is created at startup, but no
-  handlers use it yet, so it currently caches nothing.
+  implemented: `GET /movies/{movie_id}` checks Valkey (24-hour TTL) before the local
+  `movies` table and falls back to TMDB on a miss, while `GET /movies/search`,
+  `GET /movies/trending`, `GET /movies/{movie_id}/similar`, and
+  `GET /movies/{movie_id}/recommendations` paginate TMDB results and cache them
+  best-effort in PostgreSQL, where entries never expire.
+- The Valkey cache currently covers only single-movie lookups; search, trending,
+  similar, and recommended movies write only to PostgreSQL.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
@@ -439,7 +445,6 @@ a running PostgreSQL instance.
 - **Google login:** add Google OAuth as an alternative sign-in/sign-up flow. It should
   link a Google account to an existing user (or create one), then issue the same
   cookie-based session as the current login endpoint.
-- **Caching:** wire the existing Valkey client into expensive or frequently requested
-  reads, and add a TTL or invalidation strategy to the local TMDB cache, whose PostgreSQL
-  entries currently never expire. This keeps responses fresh without hitting TMDB or
-  Postgres unnecessarily.
+- **Caching:** extend the Valkey cache beyond single-movie lookups (search, trending,
+  similar, and recommendations), add short-lived negative caching for missing TMDB IDs,
+  and consider TTL or invalidation for the PostgreSQL TMDB data, which never expires.
