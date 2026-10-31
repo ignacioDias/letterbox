@@ -51,15 +51,21 @@ Requirements: Go 1.27+ and Docker.
 
 ```bash
 cp .env.example .env
-docker compose up -d
-go run ./cmd/letterbox
+docker compose up -d --build
 ```
 
-The API listens on `http://localhost:8080` by default. `docker compose up -d` starts
-PostgreSQL and Valkey; the server connects to Valkey at `localhost:6379` unless
-`VALKEY_HOST`/`VALKEY_PORT` say otherwise. It exits at startup if either service is
-unreachable. The schema is created automatically on startup; there is no separate
-migration step.
+The API listens on `http://localhost:8080` by default. `docker compose up -d --build`
+builds the Go server and starts it alongside PostgreSQL and Valkey. The app connects to
+PostgreSQL at `db:5432` and Valkey at `valkey:6379` inside the Compose network. It exits
+at startup if either service is unreachable. The schema is created automatically on
+startup; there is no separate migration step.
+
+To run the server on the host instead, start only the dependencies and run Go directly:
+
+```bash
+docker compose up -d db valkey
+go run ./cmd/letterbox
+```
 
 ### Environment variables
 

@@ -1,4 +1,26 @@
 services:
+  app:
+    build:
+      context: .
+    container_name: letterbox-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-letterbox}:${POSTGRES_PASSWORD:-letterbox}@db:5432/${POSTGRES_DB:-letterbox}?sslmode=disable
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      VALKEY_USE_TLS: ${VALKEY_USE_TLS:-false}
+      VALKEY_DATABASE_ID: ${VALKEY_DATABASE_ID:-0}
+      PORT: 8080
+      APP_ENV: ${APP_ENV:-development}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+
   valkey:
     image: valkey/valkey:8-alpine
     container_name: letterbox-valkey
