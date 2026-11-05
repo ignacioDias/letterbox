@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/testutil"
@@ -681,5 +682,288 @@ func TestGetReviewsCountForMovieByID(t *testing.T) {
 				t.Fatalf("GetReviewsCountForMovieByID() called with movieID %d; want %d", gotMovieID, tt.movieID)
 			}
 		})
+	}
+}
+
+func reviewTestCache(getFunc func(context.Context, string) (string, error), setFunc func(context.Context, string, string, int) error, deleteFunc func(context.Context, []string) (int64, error)) *testutil.FakeCache {
+	return &testutil.FakeCache{
+		GetFunc: getFunc,
+		SetFunc: func(ctx context.Context, key string, value string, expiringTimeInSeconds int) error {
+			if setFunc == nil {
+				return nil
+			}
+			return setFunc(ctx, key, value, expiringTimeInSeconds)
+		},
+		DeleteFunc: func(ctx context.Context, keys []string) (int64, error) {
+			if deleteFunc == nil {
+				return 0, nil
+			}
+			return deleteFunc(ctx, keys)
+		},
+	}
+}
+
+func TestGetReviewsFromUserByUsernameCacheHit(t *testing.T) {
+	reviews := []*domains.Review{{ID: 1, UserID: 42, MovieID: 10, Score: 8}}
+	value, err := generateCacheValueFromReviews(reviews)
+	if err != nil {
+		t.Fatalf("encode cached reviews: %v", err)
+	}
+	generation := "generation-1"
+	listKey := getKeyForUserReviews(42, 20, 5, generation)
+	generationKey := getKeyForUserReviewsGeneration(42)
+	repoCalled := false
+
+	fakeCache := reviewTestCache(func(_ context.Context, key string) (string, error) {
+		switch key {
+		case generationKey:
+			return generation, nil
+		case listKey:
+			return value, nil
+		default:
+			return "", cache.ErrKeyNotFound
+		}
+	}, nil, nil)
+	userRepo := &testutil.FakeUserRepository{
+		GetUserByUsernameFunc: func(_ context.Context, username string) (*domains.User, error) {
+			return &domains.User{ID: 42, Username: username}, nil
+		},
+	}
+	blockRepo := &testutil.FakeBlockRepository{
+		IsBlockedBetweenFunc: func(context.Context, int64, int64) (bool, error) {
+			return false, nil
+		},
+	}
+	reviewRepo := &testutil.FakeReviewRepository{
+		GetReviewsFromUserByUserIDFunc: func(context.Context, int64, int, int) ([]*domains.Review, error) {
+			repoCalled = true
+			return nil, errors.New("repository should not be called")
+		},
+	}
+	svc := NewReviewService(reviewRepo, userRepo, blockRepo, fakeCache)
+
+	got, err := svc.GetReviewsFromUserByUsername(context.Background(), 7, "grace", 20, 5)
+	if err != nil {
+		t.Fatalf("GetReviewsFromUserByUsername: %v", err)
+	}
+	if repoCalled {
+		t.Fatal("GetReviewsFromUserByUsername called repository on cache hit")
+	}
+	if len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("GetReviewsFromUserByUsername returned %+v", got)
+	}
+}
+
+func TestGetReviewsFromMovieByIDCacheMissCachesResult(t *testing.T) {
+	reviews := []*domains.Review{{ID: 1, UserID: 42, MovieID: 10, Score: 8}}
+	wantKey := getKeyForMovieReviews(10, 20, 0, "0")
+	var setKey string
+	var setTTL int
+
+	fakeCache := reviewTestCache(func(context.Context, string) (string, error) {
+		return "", cache.ErrKeyNotFound
+	}, func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+		setKey = key
+		setTTL = expiringTimeInSeconds
+		return nil
+	}, nil)
+	reviewRepo := &testutil.FakeReviewRepository{
+		GetReviewsFromMovieByIDFunc: func(_ context.Context, movieID int32, limit, offset int) ([]*domains.Review, error) {
+			if movieID != 10 || limit != 20 || offset != 0 {
+				t.Fatalf("GetReviewsFromMovieByID(%d, %d, %d); want 10, 20, 0", movieID, limit, offset)
+			}
+			return reviews, nil
+		},
+	}
+	svc := NewReviewService(reviewRepo, nil, nil, fakeCache)
+
+	got, err := svc.GetReviewsFromMovieByID(context.Background(), 10, 20, 0)
+	if err != nil {
+		t.Fatalf("GetReviewsFromMovieByID: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("GetReviewsFromMovieByID returned %+v", got)
+	}
+	if setKey != wantKey {
+		t.Fatalf("cache.Set key = %q; want %q", setKey, wantKey)
+	}
+	if setTTL != reviewCacheTTLSeconds {
+		t.Fatalf("cache.Set TTL = %d; want %d", setTTL, reviewCacheTTLSeconds)
+	}
+}
+
+func TestGetReviewByIDCacheHit(t *testing.T) {
+	review := &domains.Review{ID: 5, UserID: 42, MovieID: 10, Score: 8}
+	value, err := generateCacheValueFromReview(review)
+	if err != nil {
+		t.Fatalf("encode cached review: %v", err)
+	}
+	repoCalled := false
+	fakeCache := reviewTestCache(func(_ context.Context, key string) (string, error) {
+		if key != getKeyForReviewByID(5) {
+			t.Fatalf("cache.Get(%q); want %q", key, getKeyForReviewByID(5))
+		}
+		return value, nil
+	}, nil, nil)
+	reviewRepo := &testutil.FakeReviewRepository{
+		GetReviewByIDFunc: func(context.Context, int64) (*domains.Review, error) {
+			repoCalled = true
+			return nil, errors.New("repository should not be called")
+		},
+	}
+	svc := NewReviewService(reviewRepo, nil, nil, fakeCache)
+
+	got, err := svc.GetReviewByID(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("GetReviewByID: %v", err)
+	}
+	if repoCalled {
+		t.Fatal("GetReviewByID called repository on cache hit")
+	}
+	if got.ID != 5 {
+		t.Fatalf("GetReviewByID returned %+v", got)
+	}
+}
+
+func TestReviewAggregatesCacheHit(t *testing.T) {
+	fakeCache := reviewTestCache(func(_ context.Context, key string) (string, error) {
+		switch key {
+		case getKeyForMovieReviewAverage(10):
+			return "7.5", nil
+		case getKeyForMovieReviewCount(10):
+			return "3", nil
+		default:
+			return "", cache.ErrKeyNotFound
+		}
+	}, nil, nil)
+	reviewRepo := &testutil.FakeReviewRepository{
+		GetAverageRatingForMovieByIDFunc: func(context.Context, int32) (float64, error) {
+			t.Fatal("GetAverageRatingForMovieByID called on cache hit")
+			return 0, nil
+		},
+		GetReviewsCountForMovieByIDFunc: func(context.Context, int32) (int, error) {
+			t.Fatal("GetReviewsCountForMovieByID called on cache hit")
+			return 0, nil
+		},
+	}
+	svc := NewReviewService(reviewRepo, nil, nil, fakeCache)
+
+	rating, err := svc.GetAverageRatingForMovieByID(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("GetAverageRatingForMovieByID: %v", err)
+	}
+	if rating != 7.5 {
+		t.Fatalf("average rating = %v; want 7.5", rating)
+	}
+	count, err := svc.GetReviewsCountForMovieByID(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("GetReviewsCountForMovieByID: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("review count = %d; want 3", count)
+	}
+}
+
+func TestCreateReviewForMovieByIDInvalidatesCache(t *testing.T) {
+	var deletedKeys []string
+	generationKeys := map[string]bool{}
+	fakeCache := reviewTestCache(func(context.Context, string) (string, error) {
+		return "", cache.ErrKeyNotFound
+	}, func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+		if expiringTimeInSeconds != reviewCacheTTLSeconds {
+			t.Fatalf("cache.Set TTL = %d; want %d", expiringTimeInSeconds, reviewCacheTTLSeconds)
+		}
+		generationKeys[key] = true
+		return nil
+	}, func(_ context.Context, keys []string) (int64, error) {
+		deletedKeys = append(deletedKeys, keys...)
+		return int64(len(keys)), nil
+	})
+	reviewRepo := &testutil.FakeReviewRepository{
+		CreateReviewForMovieByIDFunc: func(_ context.Context, review *domains.Review) (*domains.Review, error) {
+			review.ID = 9
+			return review, nil
+		},
+	}
+	svc := NewReviewService(reviewRepo, nil, nil, fakeCache)
+
+	created, err := svc.CreateReviewForMovieByID(context.Background(), domains.NewReview(42, 10, 8, "great", false))
+	if err != nil {
+		t.Fatalf("CreateReviewForMovieByID: %v", err)
+	}
+	if created.ID != 9 {
+		t.Fatalf("CreateReviewForMovieByID returned ID %d; want 9", created.ID)
+	}
+
+	wantGenerations := []string{
+		getKeyForUserReviewsGeneration(42),
+		getKeyForMovieReviewsGeneration(10),
+		getKeyForFollowingReviewsGeneration(),
+	}
+	for _, key := range wantGenerations {
+		if !generationKeys[key] {
+			t.Fatalf("cache.Set did not include %q (set %v)", key, generationKeys)
+		}
+	}
+	wantDeleted := map[string]bool{
+		getKeyForMovieReviewAverage(10): false,
+		getKeyForMovieReviewCount(10):   false,
+		getKeyForReviewByID(9):          false,
+	}
+	for _, key := range deletedKeys {
+		if _, ok := wantDeleted[key]; ok {
+			wantDeleted[key] = true
+		}
+	}
+	for key, found := range wantDeleted {
+		if !found {
+			t.Fatalf("cache.Delete did not include %q (deleted %v)", key, deletedKeys)
+		}
+	}
+}
+
+func TestDeleteReviewByIDInvalidatesCache(t *testing.T) {
+	var deletedKeys []string
+	generationKeys := map[string]bool{}
+	fakeCache := reviewTestCache(func(context.Context, string) (string, error) {
+		return "", cache.ErrKeyNotFound
+	}, func(_ context.Context, key string, _ string, _ int) error {
+		generationKeys[key] = true
+		return nil
+	}, func(_ context.Context, keys []string) (int64, error) {
+		deletedKeys = append(deletedKeys, keys...)
+		return int64(len(keys)), nil
+	})
+	reviewRepo := &testutil.FakeReviewRepository{
+		GetReviewByIDFunc: func(context.Context, int64) (*domains.Review, error) {
+			return &domains.Review{ID: 9, UserID: 42, MovieID: 10}, nil
+		},
+		DeleteReviewByIDFunc: func(context.Context, int64, int64) error {
+			return nil
+		},
+	}
+	svc := NewReviewService(reviewRepo, nil, nil, fakeCache)
+
+	if err := svc.DeleteReviewByID(context.Background(), 42, 9); err != nil {
+		t.Fatalf("DeleteReviewByID: %v", err)
+	}
+
+	for _, key := range []string{
+		getKeyForUserReviewsGeneration(42),
+		getKeyForMovieReviewsGeneration(10),
+		getKeyForFollowingReviewsGeneration(),
+	} {
+		if !generationKeys[key] {
+			t.Fatalf("cache.Set did not include %q (set %v)", key, generationKeys)
+		}
+	}
+	foundReviewKey := false
+	for _, key := range deletedKeys {
+		if key == getKeyForReviewByID(9) {
+			foundReviewKey = true
+		}
+	}
+	if !foundReviewKey {
+		t.Fatalf("cache.Delete did not include %q (deleted %v)", getKeyForReviewByID(9), deletedKeys)
 	}
 }

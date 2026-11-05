@@ -42,6 +42,42 @@ func getKeyForFollowCount(kind, username string) string {
 	return "follow:" + cacheKeyVersion + ":" + kind + ":count:user:" + username
 }
 
+func getKeyForUserReviewsGeneration(userID int64) string {
+	return "review:" + cacheKeyVersion + ":user:" + strconv.FormatInt(userID, 10) + ":generation"
+}
+
+func getKeyForUserReviews(userID int64, limit, offset int, generation string) string {
+	return "review:" + cacheKeyVersion + ":user:" + strconv.FormatInt(userID, 10) + ":generation:" + generation + ":limit:" + strconv.Itoa(limit) + ":offset:" + strconv.Itoa(offset)
+}
+
+func getKeyForFollowingReviewsGeneration() string {
+	return "review:" + cacheKeyVersion + ":following:generation"
+}
+
+func getKeyForFollowingReviews(userID int64, limit, offset int, generation string) string {
+	return "review:" + cacheKeyVersion + ":following:user:" + strconv.FormatInt(userID, 10) + ":generation:" + generation + ":limit:" + strconv.Itoa(limit) + ":offset:" + strconv.Itoa(offset)
+}
+
+func getKeyForMovieReviewsGeneration(movieID int32) string {
+	return "review:" + cacheKeyVersion + ":movie:" + strconv.FormatInt(int64(movieID), 10) + ":generation"
+}
+
+func getKeyForMovieReviews(movieID int32, limit, offset int, generation string) string {
+	return "review:" + cacheKeyVersion + ":movie:" + strconv.FormatInt(int64(movieID), 10) + ":generation:" + generation + ":limit:" + strconv.Itoa(limit) + ":offset:" + strconv.Itoa(offset)
+}
+
+func getKeyForMovieReviewAverage(movieID int32) string {
+	return "review:" + cacheKeyVersion + ":movie:" + strconv.FormatInt(int64(movieID), 10) + ":average"
+}
+
+func getKeyForMovieReviewCount(movieID int32) string {
+	return "review:" + cacheKeyVersion + ":movie:" + strconv.FormatInt(int64(movieID), 10) + ":count"
+}
+
+func getKeyForReviewByID(reviewID int64) string {
+	return "review:" + cacheKeyVersion + ":id:" + strconv.FormatInt(reviewID, 10)
+}
+
 func generateMovieFromCacheResult(result string) (*domains.Movie, error) {
 	var movie domains.Movie
 	if err := json.Unmarshal([]byte(result), &movie); err != nil {
@@ -88,4 +124,36 @@ func generateCacheValueFromPublicUsers(users []*domains.PublicUser) (string, err
 		return "", err
 	}
 	return string(usersJSON), nil
+}
+
+func generateReviewsFromCacheResult(result string) ([]*domains.Review, error) {
+	var reviews []*domains.Review
+	if err := json.Unmarshal([]byte(result), &reviews); err != nil {
+		return nil, err
+	}
+	return reviews, nil
+}
+
+func generateCacheValueFromReviews(reviews []*domains.Review) (string, error) {
+	reviewsJSON, err := json.Marshal(reviews)
+	if err != nil {
+		return "", err
+	}
+	return string(reviewsJSON), nil
+}
+
+func generateReviewFromCacheResult(result string) (*domains.Review, error) {
+	var review domains.Review
+	if err := json.Unmarshal([]byte(result), &review); err != nil {
+		return nil, err
+	}
+	return &review, nil
+}
+
+func generateCacheValueFromReview(review *domains.Review) (string, error) {
+	reviewJSON, err := json.Marshal(review)
+	if err != nil {
+		return "", err
+	}
+	return string(reviewJSON), nil
 }

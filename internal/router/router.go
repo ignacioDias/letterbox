@@ -33,7 +33,7 @@ func NewRouter(db *database.Database, cache cache.Cache) Router {
 		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
 		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository, cache),
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
-		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository),
+		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, cache),
 		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
 		movieHandler:    handlers.NewMovieHandler(db.MovieRepository, cache),
 		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),
@@ -71,17 +71,17 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/block", r.auth.Authenticate(r.blockHandler.UnblockUserByUsername))
 
 	//Review routes
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.auth.Authenticate(r.reviewHandler.GetReviewsFromUserByUsername)) //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))                 //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/reviews", r.auth.Authenticate(r.reviewHandler.GetReviewsFromUserByUsername))
+	r.mux.HandleFunc("GET /api/v1/reviews/following", r.auth.Authenticate(r.reviewHandler.GetReviewsFromFollowingUsers))
 
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)              //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID) //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/count", r.reviewHandler.GetReviewsCountForMovieByID)    //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews", r.reviewHandler.GetReviewsFromMovieByID)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/average", r.reviewHandler.GetAverageRatingForMovieByID)
+	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/reviews/count", r.reviewHandler.GetReviewsCountForMovieByID)
 	r.mux.HandleFunc("POST /api/v1/movies/{movie_id}/reviews", r.auth.Authenticate(r.reviewHandler.CreateReviewForMovieByID))
 	r.mux.HandleFunc("PATCH /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.UpdateReviewByID))
 	r.mux.HandleFunc("DELETE /api/v1/reviews/{review_id}", r.auth.Authenticate(r.reviewHandler.DeleteReviewByID))
 
-	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/reviews/{review_id}", r.reviewHandler.GetReviewByID)
 
 	// Like and Dislike routes
 	r.mux.HandleFunc("POST /api/v1/reviews/{review_id}/like", r.auth.Authenticate(r.reactionHandler.LikeReviewByID))

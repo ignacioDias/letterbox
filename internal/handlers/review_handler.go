@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
@@ -39,9 +40,9 @@ type UpdateReviewReq struct {
 	ContainsSpoilers *bool   `json:"containsSpoilers,omitempty"`
 }
 
-func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository) ReviewHandler {
+func NewReviewHandler(reviewRepo repositories.ReviewRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository, caches ...cache.Cache) ReviewHandler {
 	return &reviewHandler{
-		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo),
+		reviewService: services.NewReviewService(reviewRepo, userRepo, blockRepo, caches...),
 	}
 }
 

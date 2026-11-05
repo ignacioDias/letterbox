@@ -302,6 +302,9 @@ func (s *followService) invalidateFollowCache(ctx context.Context, followerID in
 	if _, err := s.cache.Delete(ctx, keys); err != nil {
 		log.Printf("Error deleting follow count cache: %v", err)
 	}
+	if err := s.cache.Set(ctx, getKeyForFollowingReviewsGeneration(), newReviewCacheGeneration(), reviewCacheTTLSeconds); err != nil {
+		log.Printf("Error resetting following reviews cache generation: %v", err)
+	}
 }
 
 func (s *followService) resetFollowCacheGeneration(ctx context.Context, kind, username string) {
