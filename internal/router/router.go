@@ -100,7 +100,7 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/similar", r.movieHandler.GetSimilarMovies)                       //TODO: Implement cache
 	r.mux.HandleFunc("GET /api/v1/movies/{movie_id}/recommendations", r.movieHandler.GetRecommendationsForMovieByID) //TODO: Implement cache
 	r.mux.HandleFunc("GET /api/v1/movies/search", r.movieHandler.SearchMovies)                                       //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)                                //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/movies/trending", r.movieHandler.GetTrendingMovies)
 
 	// Comment routes
 

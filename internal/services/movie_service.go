@@ -38,6 +38,8 @@ const maxTMDBPage = 500
 
 var movieCacheTTLSeconds = 86400
 
+var trendingCacheTTLSeconds = 86400
+
 var ErrInvalidPage = errors.New("invalid page number")
 var ErrInvalidSearchQuery = errors.New("invalid search query")
 
@@ -169,6 +171,13 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 	if err != nil {
 		return nil, err
 	}
+	movies, found, err := s.getTrendingMoviesFromCache(ctx, normalizedPage)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return movies, nil
+	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
@@ -183,8 +192,47 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 	}
 
 	results := s.convertTMDBTrendingToDomainMovies(ctx, trending)
+	movies = domains.NewPaginatedMovies(trending.Page, trending.TotalPages, trending.TotalResults, results)
 
-	return domains.NewPaginatedMovies(trending.Page, trending.TotalPages, trending.TotalResults, results), nil
+	s.cacheTrendingMovies(ctx, normalizedPage, movies)
+
+	return movies, nil
+}
+
+func (s *movieService) getTrendingMoviesFromCache(ctx context.Context, page string) (*domains.PaginatedMovies, bool, error) {
+	key := getKeyForTrendingMovies(page)
+	result, err := s.cache.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, cache.ErrKeyNotFound) {
+			return nil, false, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, false, ctxErr
+		}
+		log.Printf("Error reading trending movies from cache: %v", err)
+		return nil, false, nil
+	}
+	movies, err := generatePaginatedMoviesFromCacheResult(result)
+	if err == nil {
+		return movies, true, nil
+	}
+	log.Printf("Error decoding cached trending movies: %v", err)
+	if _, err := s.cache.Delete(ctx, []string{key}); err != nil {
+		log.Printf("Error deleting corrupt cached trending movies: %v", err)
+	}
+	return nil, false, nil
+}
+
+func (s *movieService) cacheTrendingMovies(ctx context.Context, page string, movies *domains.PaginatedMovies) {
+	value, err := generateCacheValueFromPaginatedMovies(movies)
+	if err != nil {
+		log.Printf("Error encoding trending movies for cache: %v", err)
+		return
+	}
+	key := getKeyForTrendingMovies(page)
+	if err := s.cache.Set(ctx, key, value, trendingCacheTTLSeconds); err != nil {
+		log.Printf("Error saving trending movies to cache: %v", err)
+	}
 }
 
 func (s *movieService) convertTMDBTrendingToDomainMovies(ctx context.Context, trending *tmdb.Trending) []*domains.Movie {

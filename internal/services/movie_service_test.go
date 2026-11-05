@@ -493,6 +493,17 @@ func TestGetTrendingMovies(t *testing.T) {
 			client := &fakeTMDBMovieGetter{trending: tt.trending, trendingErr: tt.trendingErr}
 			svc := &movieService{
 				movieRepository: movieRepo,
+				cache: &testutil.FakeCache{
+					GetFunc: func(context.Context, string) (string, error) {
+						return "", cache.ErrKeyNotFound
+					},
+					SetFunc: func(context.Context, string, string, int) error {
+						return nil
+					},
+					DeleteFunc: func(context.Context, []string) (int64, error) {
+						return 0, nil
+					},
+				},
 				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
 					if tt.clientErr != nil {
 						return nil, tt.clientErr
@@ -528,6 +539,236 @@ func TestGetTrendingMovies(t *testing.T) {
 
 			if !slices.Equal(saved, tt.wantSaved) {
 				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("GetTrendingMovies() = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("GetTrendingMovies() = nil; want result")
+			}
+			if got.Page != tt.want.Page || got.TotalPages != tt.want.TotalPages || got.TotalResults != tt.want.TotalResults {
+				t.Fatalf("GetTrendingMovies() metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+					got.Page, got.TotalPages, got.TotalResults, tt.want.Page, tt.want.TotalPages, tt.want.TotalResults)
+			}
+			if len(got.Results) != len(tt.want.Results) {
+				t.Fatalf("GetTrendingMovies() returned %d movies; want %d", len(got.Results), len(tt.want.Results))
+			}
+			for i := range got.Results {
+				if got.Results[i].TMDBID != tt.want.Results[i].TMDBID ||
+					got.Results[i].Title != tt.want.Results[i].Title ||
+					got.Results[i].PosterPath != tt.want.Results[i].PosterPath {
+					t.Fatalf("GetTrendingMovies() result %d = %+v; want %+v", i, got.Results[i], tt.want.Results[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetTrendingMoviesCache(t *testing.T) {
+	genericErr := errors.New("cache unavailable")
+	trending := mustParseTrending(t, `{
+		"page": 2,
+		"total_pages": 20,
+		"total_results": 400,
+		"results": [
+			{"id": 10, "title": "Arrival", "poster_path": "/arrival.jpg"},
+			{"id": 11, "title": "Dune", "poster_path": "/dune.jpg"}
+		]
+	}`)
+	want := &domains.PaginatedMovies{
+		Page:         2,
+		TotalPages:   20,
+		TotalResults: 400,
+		Results: []*domains.Movie{
+			{TMDBID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"},
+			{TMDBID: 11, Title: "Dune", PosterPath: "/dune.jpg"},
+		},
+	}
+	cached := &domains.PaginatedMovies{
+		Page:         2,
+		TotalPages:   20,
+		TotalResults: 1,
+		Results: []*domains.Movie{
+			{TMDBID: 99, Title: "Cached", PosterPath: "/cached.jpg"},
+		},
+	}
+	cachedRaw, err := json.Marshal(cached)
+	if err != nil {
+		t.Fatalf("marshal cached trending movies: %v", err)
+	}
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name            string
+		ctx             context.Context
+		page            string
+		cacheRaw        string
+		cacheGetErr     error
+		cacheSetErr     error
+		trendingErr     error
+		wantErr         error
+		wantTMDB        bool
+		wantSaved       []int32
+		wantCacheSet    bool
+		wantCacheDelete bool
+		want            *domains.PaginatedMovies
+	}{
+		{
+			name:     "returns trending movies from cache",
+			page:     "2",
+			cacheRaw: string(cachedRaw),
+			want:     cached,
+		},
+		{
+			name:         "fetches and caches on cache miss",
+			page:         "2",
+			cacheGetErr:  cache.ErrKeyNotFound,
+			wantTMDB:     true,
+			wantSaved:    []int32{10, 11},
+			wantCacheSet: true,
+			want:         want,
+		},
+		{
+			name:         "defaults omitted page to page 1 in cache key",
+			page:         "",
+			cacheGetErr:  cache.ErrKeyNotFound,
+			wantTMDB:     true,
+			wantSaved:    []int32{10, 11},
+			wantCacheSet: true,
+			want:         want,
+		},
+		{
+			name:            "deletes corrupt cache and fetches from tmdb",
+			page:            "2",
+			cacheRaw:        "{not json",
+			wantTMDB:        true,
+			wantSaved:       []int32{10, 11},
+			wantCacheSet:    true,
+			wantCacheDelete: true,
+			want:            want,
+		},
+		{
+			name:         "falls back to tmdb when cache read fails",
+			page:         "2",
+			cacheGetErr:  genericErr,
+			wantTMDB:     true,
+			wantSaved:    []int32{10, 11},
+			wantCacheSet: true,
+			want:         want,
+		},
+		{
+			name:         "returns result when cache write fails",
+			page:         "2",
+			cacheGetErr:  cache.ErrKeyNotFound,
+			cacheSetErr:  genericErr,
+			wantTMDB:     true,
+			wantSaved:    []int32{10, 11},
+			wantCacheSet: true,
+			want:         want,
+		},
+		{
+			name:        "propagates canceled context on cache read",
+			ctx:         canceledCtx,
+			page:        "1",
+			cacheGetErr: context.Canceled,
+			wantErr:     context.Canceled,
+		},
+		{
+			name:        "tmdb error is not cached",
+			page:        "2",
+			cacheGetErr: cache.ErrKeyNotFound,
+			trendingErr: genericErr,
+			wantErr:     genericErr,
+			wantTMDB:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var saved []int32
+			var cacheSetKey string
+			var cacheSetTTL int
+			cacheSetCalls := 0
+			cacheDeleteCalls := 0
+
+			movieRepo := &testutil.FakeMovieRepository{
+				SaveMovieFunc: func(_ context.Context, movie *domains.Movie) error {
+					saved = append(saved, movie.TMDBID)
+					return nil
+				},
+			}
+			fakeCache := &testutil.FakeCache{
+				GetFunc: func(_ context.Context, _ string) (string, error) {
+					if tt.cacheGetErr != nil {
+						return "", tt.cacheGetErr
+					}
+					if tt.cacheRaw == "" {
+						return "", cache.ErrKeyNotFound
+					}
+					return tt.cacheRaw, nil
+				},
+				SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+					cacheSetCalls++
+					cacheSetKey = key
+					cacheSetTTL = expiringTimeInSeconds
+					return tt.cacheSetErr
+				},
+				DeleteFunc: func(_ context.Context, _ []string) (int64, error) {
+					cacheDeleteCalls++
+					return 1, nil
+				},
+			}
+			client := &fakeTMDBMovieGetter{trending: trending, trendingErr: tt.trendingErr}
+			svc := &movieService{
+				movieRepository: movieRepo,
+				cache:           fakeCache,
+				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+					return client, nil
+				},
+			}
+
+			ctx := tt.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			got, err := svc.GetTrendingMovies(ctx, tt.page)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("GetTrendingMovies() error = %v; want %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("GetTrendingMovies() error = %v; want nil", err)
+			}
+
+			if gotTMDB := len(client.trendingCalls) > 0; gotTMDB != tt.wantTMDB {
+				t.Fatalf("TMDB GetTrending called = %v; want %v", gotTMDB, tt.wantTMDB)
+			}
+			if !slices.Equal(saved, tt.wantSaved) {
+				t.Fatalf("saved movie IDs = %v; want %v", saved, tt.wantSaved)
+			}
+			if gotCacheSet := cacheSetCalls > 0; gotCacheSet != tt.wantCacheSet {
+				t.Fatalf("cache.Set called = %v; want %v", gotCacheSet, tt.wantCacheSet)
+			}
+			if tt.wantCacheSet {
+				normalizedPage, err := normalizeAndValidatePage(tt.page)
+				if err != nil {
+					t.Fatalf("normalize page: %v", err)
+				}
+				if wantKey := getKeyForTrendingMovies(normalizedPage); cacheSetKey != wantKey {
+					t.Fatalf("cache.Set key = %q; want %q", cacheSetKey, wantKey)
+				}
+				if cacheSetTTL != trendingCacheTTLSeconds {
+					t.Fatalf("cache.Set TTL = %d; want %d", cacheSetTTL, trendingCacheTTLSeconds)
+				}
+			}
+			if gotDelete := cacheDeleteCalls > 0; gotDelete != tt.wantCacheDelete {
+				t.Fatalf("cache.Delete called = %v; want %v", gotDelete, tt.wantCacheDelete)
 			}
 
 			if tt.want == nil {
