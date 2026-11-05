@@ -13,30 +13,32 @@ type Router interface {
 }
 
 type router struct {
-	mux             *http.ServeMux
-	cache           cache.Cache
-	authHandler     handlers.AuthHandler
-	userHandler     handlers.UserHandler
-	followHandler   handlers.FollowHandler
-	blockHandler    handlers.BlockHandler
-	reviewHandler   handlers.ReviewHandler
-	reactionHandler handlers.ReactionHandler
-	movieHandler    handlers.MovieHandler
-	auth            middleware.AuthenticationMiddleware
+	mux                 *http.ServeMux
+	cache               cache.Cache
+	authHandler         handlers.AuthHandler
+	googleOAuth2Handler handlers.GoogleOAuth2Handler
+	userHandler         handlers.UserHandler
+	followHandler       handlers.FollowHandler
+	blockHandler        handlers.BlockHandler
+	reviewHandler       handlers.ReviewHandler
+	reactionHandler     handlers.ReactionHandler
+	movieHandler        handlers.MovieHandler
+	auth                middleware.AuthenticationMiddleware
 }
 
 func NewRouter(db *database.Database, cache cache.Cache) Router {
 	return &router{
-		mux:             http.NewServeMux(),
-		cache:           cache,
-		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository, cache),
-		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository, cache),
-		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository, cache),
-		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
-		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, cache),
-		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
-		movieHandler:    handlers.NewMovieHandler(db.MovieRepository, cache),
-		auth:            middleware.NewAuthenticationMiddleware(db.SessionRepository),
+		mux:                 http.NewServeMux(),
+		cache:               cache,
+		authHandler:         handlers.NewAuthHandler(db.UserRepository, db.SessionRepository, cache),
+		googleOAuth2Handler: handlers.NewGoogleOAuth2Handler(db.UserIdentityRepository, db.UserRepository, db.SessionRepository),
+		userHandler:         handlers.NewUserHandler(db.UserRepository, db.SessionRepository, cache),
+		followHandler:       handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository, cache),
+		blockHandler:        handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
+		reviewHandler:       handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, cache),
+		reactionHandler:     handlers.NewReactionHandler(db.ReactionRepository),
+		movieHandler:        handlers.NewMovieHandler(db.MovieRepository, cache),
+		auth:                middleware.NewAuthenticationMiddleware(db.SessionRepository),
 	}
 }
 
@@ -46,6 +48,10 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("POST /api/v1/auth/register", r.authHandler.RegisterUser)
 	r.mux.HandleFunc("POST /api/v1/auth/login", r.authHandler.LoginUser)
 	r.mux.HandleFunc("DELETE /api/v1/auth/logout", r.auth.Authenticate(r.authHandler.LogoutUser))
+
+	// OAuth 2.0 routes
+	r.mux.HandleFunc("GET /api/v1/auth/oauth2/google", r.googleOAuth2Handler.GoogleOAuth2Login)
+	r.mux.HandleFunc("GET /api/v1/auth/oauth2/google/callback", r.googleOAuth2Handler.GoogleOAuth2Callback)
 
 	// User routes
 	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))

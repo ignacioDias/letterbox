@@ -11,6 +11,8 @@ var (
 	ErrUsernameAlreadyExists = errors.New("username already exists")
 	ErrEmailAlreadyExists    = errors.New("email already exists")
 	ErrUserNotFound          = errors.New("user not found")
+	ErrUserIdentityNotFound  = errors.New("user identity not found")
+	ErrUserIdentityExists    = errors.New("user identity already exists")
 	ErrSessionNotFound       = errors.New("session not found")
 	ErrAlreadyFollowing      = errors.New("already following this user")
 	ErrNotFollowing          = errors.New("not following this user")

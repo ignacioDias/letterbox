@@ -522,10 +522,5 @@ a running PostgreSQL instance.
 - **Movie bookmarks:** let authenticated users bookmark movies and manage a personal
   saved-movies list. This needs a `bookmarks` table keyed by user and movie, plus
   endpoints to add, remove, and list bookmarks with pagination.
-- **Google login:** add Google OAuth as an alternative sign-in/sign-up flow. It should
-  link a Google account to an existing user (or create one), then issue the same
-  cookie-based session as the current login endpoint.
-- **Caching:** add short-lived negative caching for missing TMDB IDs, and consider TTL
-  or invalidation for the PostgreSQL TMDB data, which never expires.
 - Comments: implement comments for reviews and, at the same time, comments itself.
 - Messaging system: for users that follow each other
