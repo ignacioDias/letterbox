@@ -1,10 +1,12 @@
 package database
 
 import (
+	"embed"
 	"fmt"
 	"letterbox/internal/repositories"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pressly/goose/v3"
 )
 
 type Database struct {
@@ -31,24 +33,18 @@ func NewDatabase(db *sqlx.DB) *Database {
 	}
 }
 
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
 func (db *Database) Init() error {
-	tx, err := db.DB.Beginx()
-	if err != nil {
-		return fmt.Errorf("begin init db transaction: %w", err)
+	goose.SetBaseFS(migrationsFS)
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("set migration dialect: %w", err)
 	}
 
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	for _, tableStmt := range SchemaStatements {
-		if _, err := tx.Exec(tableStmt); err != nil {
-			return fmt.Errorf("create table %s: %w", tableStmt, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit init db transaction: %w", err)
+	if err := goose.Up(db.DB.DB, "migrations"); err != nil {
+		return fmt.Errorf("apply migrations: %w", err)
 	}
 
 	return nil

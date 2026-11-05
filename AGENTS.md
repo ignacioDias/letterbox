@@ -24,7 +24,7 @@
 - Service and repository signatures put identifiers first and payload last, e.g. `UpdateReviewByID(ctx, userID, reviewID, containsSpoilers, content, score)`. Keep this order consistent across both layers so future comment/reaction methods match.
 - The review stack already spans all layers: `ReviewRepository.GetReviewsFromUserByUserID`, `ReviewService.GetReviewsFromUserByUsername`, and `ReviewHandler.GetReviewsFromUserByUsername`. `MovieRepository` is an empty stub, so do not assume movie lookups exist.
 - Entry point `cmd/letterbox/main.go`: loads env via godotenv, connects with sqlx/pgx, runs `database.Init()`, starts hourly expired-session cleanup, then the server with graceful shutdown.
-- Schema is in `internal/database/schema.go` and is applied on every startup in one transaction using `CREATE TABLE IF NOT EXISTS`. There are no migrations: add statements to `SchemaStatements` to change tables.
+- Schema changes live in `internal/database/migrations/` as goose SQL files (`NNNNN_name.sql` with `-- +goose Up` and `-- +goose Down`). They are embedded and applied automatically on startup via `database.Init()`. Never edit an already-applied migration; add a new numbered file instead.
 - Routes in `internal/router/router.go` use Go method patterns. User routes currently use the literal `username` segment (`/users/username/{username}`), and review-by-movie routes use `{movie_id}`. Read path params with `r.PathValue("username")` / `r.PathValue("movie_id")` rather than parsing the URL.
 
 ## Auth and errors

@@ -26,7 +26,7 @@ There is a [vibe coded frontend for this project](https://github.com/ignacioDias
 cmd/letterbox/          Application entry point
 internal/
   cache/                Valkey client and cache interface
-  database/             Connection wiring, schema creation
+  database/             Connection wiring, embedded SQL migrations
   domains/              Domain models (User, Session, Review, Reaction, Movie, PublicUser)
   handlers/             HTTP handlers
   middleware/           Authentication and rate limiting
@@ -57,8 +57,8 @@ docker compose up -d --build
 The API listens on `http://localhost:8080` by default. `docker compose up -d --build`
 builds the Go server and starts it alongside PostgreSQL and Valkey. The app connects to
 PostgreSQL at `db:5432` and Valkey at `valkey:6379` inside the Compose network. It exits
-at startup if either service is unreachable. The schema is created automatically on
-startup; there is no separate migration step.
+at startup if either service is unreachable. Database migrations are applied
+automatically on startup with goose; there is no separate migration step.
 
 To run the server on the host instead, start only the dependencies and run Go directly:
 
