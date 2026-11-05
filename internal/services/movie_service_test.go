@@ -1362,3 +1362,133 @@ func TestSearchMovies(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertTMDBTrendingToDomainMovies(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *tmdb.Trending
+		want  []*domains.Movie
+	}{
+		{name: "nil", want: []*domains.Movie{}},
+		{name: "empty", input: &tmdb.Trending{}, want: []*domains.Movie{}},
+		{
+			name: "movies",
+			input: mustParseTrending(t, `{
+				"results": [
+					{"id": 10, "title": "Arrival", "poster_path": "/arrival.jpg"},
+					{"id": 11, "title": "Dune", "poster_path": "/dune.jpg"}
+				]
+			}`),
+			want: []*domains.Movie{
+				{TMDBID: 10, Title: "Arrival", PosterPath: "/arrival.jpg"},
+				{TMDBID: 11, Title: "Dune", PosterPath: "/dune.jpg"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertDomainMovies(t, convertTMDBTrendingToDomainMovies(tt.input), tt.want)
+		})
+	}
+}
+
+func TestConvertTMDBRecommendationsToDomainMovies(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *tmdb.MovieRecommendations
+		want  []*domains.Movie
+	}{
+		{name: "nil", want: []*domains.Movie{}},
+		{name: "empty", input: &tmdb.MovieRecommendations{}, want: []*domains.Movie{}},
+		{
+			name: "movies",
+			input: mustParseRecommendations(t, `{
+				"results": [
+					{"id": 30, "title": "Moon", "poster_path": "/moon.jpg"},
+					{"id": 31, "title": "Solaris", "poster_path": "/solaris.jpg"}
+				]
+			}`),
+			want: []*domains.Movie{
+				{TMDBID: 30, Title: "Moon", PosterPath: "/moon.jpg"},
+				{TMDBID: 31, Title: "Solaris", PosterPath: "/solaris.jpg"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertDomainMovies(t, convertTMDBRecommendationsToDomainMovies(tt.input), tt.want)
+		})
+	}
+}
+
+func TestConvertTMDBSimilarToDomainMovies(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *tmdb.MovieSimilar
+		want  []*domains.Movie
+	}{
+		{name: "nil", want: []*domains.Movie{}},
+		{name: "empty", input: &tmdb.MovieSimilar{}, want: []*domains.Movie{}},
+		{
+			name: "movies",
+			input: mustParseSimilar(t, `{
+				"results": [
+					{"id": 20, "title": "Interstellar", "poster_path": "/interstellar.jpg"},
+					{"id": 21, "title": "Contact", "poster_path": "/contact.jpg"}
+				]
+			}`),
+			want: []*domains.Movie{
+				{TMDBID: 20, Title: "Interstellar", PosterPath: "/interstellar.jpg"},
+				{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertDomainMovies(t, convertTMDBSimilarToDomainMovies(tt.input), tt.want)
+		})
+	}
+}
+
+func TestConvertTMDBSearchToDomainMovies(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *tmdb.SearchMovies
+		want  []*domains.Movie
+	}{
+		{name: "nil", want: []*domains.Movie{}},
+		{name: "empty", input: &tmdb.SearchMovies{}, want: []*domains.Movie{}},
+		{
+			name: "movies",
+			input: mustParseSearch(t, `{
+				"results": [
+					{"id": 20, "title": "Arrival", "poster_path": "/arrival.jpg"},
+					{"id": 21, "title": "Contact", "poster_path": "/contact.jpg"}
+				]
+			}`),
+			want: []*domains.Movie{
+				{TMDBID: 20, Title: "Arrival", PosterPath: "/arrival.jpg"},
+				{TMDBID: 21, Title: "Contact", PosterPath: "/contact.jpg"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertDomainMovies(t, convertTMDBSearchToDomainMovies(tt.input), tt.want)
+		})
+	}
+}
+
+func assertDomainMovies(t *testing.T, got, want []*domains.Movie) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d movies; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].TMDBID != want[i].TMDBID ||
+			got[i].Title != want[i].Title ||
+			got[i].PosterPath != want[i].PosterPath {
+			t.Fatalf("movie %d = %+v; want %+v", i, got[i], want[i])
+		}
+	}
+}

@@ -102,6 +102,14 @@ func (s *movieService) GetMovieByID(ctx context.Context, movieID int32) (*domain
 	return movie, nil
 }
 
+func (s *movieService) persistMovies(ctx context.Context, movies []*domains.Movie) {
+	for _, movie := range movies {
+		if err := s.movieRepository.SaveMovie(ctx, movie); err != nil {
+			log.Printf("Error saving movie to repository: %v", err)
+		}
+	}
+}
+
 func (s *movieService) getMovieFromCache(ctx context.Context, movieID int32) (*domains.Movie, bool, error) {
 	key := getKeyForMovieByID(movieID)
 	result, err := s.cache.Get(ctx, key)
@@ -191,7 +199,8 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 		return nil, err
 	}
 
-	results := s.convertTMDBTrendingToDomainMovies(ctx, trending)
+	results := convertTMDBTrendingToDomainMovies(trending)
+	s.persistMovies(ctx, results)
 	movies = domains.NewPaginatedMovies(trending.Page, trending.TotalPages, trending.TotalResults, results)
 
 	s.cacheTrendingMovies(ctx, normalizedPage, movies)
@@ -235,18 +244,13 @@ func (s *movieService) cacheTrendingMovies(ctx context.Context, page string, mov
 	}
 }
 
-func (s *movieService) convertTMDBTrendingToDomainMovies(ctx context.Context, trending *tmdb.Trending) []*domains.Movie {
-	if trending == nil || len(trending.Results) == 0 {
+func convertTMDBTrendingToDomainMovies(trending *tmdb.Trending) []*domains.Movie {
+	if trending == nil || trending.TrendingResults == nil || len(trending.Results) == 0 {
 		return []*domains.Movie{}
 	}
-	var domainMovies []*domains.Movie
-	domainMovies = make([]*domains.Movie, 0, len(trending.Results))
+	domainMovies := make([]*domains.Movie, 0, len(trending.Results))
 	for _, result := range trending.Results {
-		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
-		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
-			log.Printf("Error saving movie to repository: %v", err)
-		}
-		domainMovies = append(domainMovies, domainMovie)
+		domainMovies = append(domainMovies, domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now()))
 	}
 	return domainMovies
 }
@@ -269,22 +273,18 @@ func (s *movieService) GetRecommendationsForMovieByID(ctx context.Context, movie
 		}
 		return nil, err
 	}
-	results := s.convertTMDBRecommendationsToDomainMovies(ctx, recommendations)
+	results := convertTMDBRecommendationsToDomainMovies(recommendations)
+	s.persistMovies(ctx, results)
 	return domains.NewPaginatedMovies(recommendations.Page, recommendations.TotalPages, recommendations.TotalResults, results), nil
 }
 
-func (s *movieService) convertTMDBRecommendationsToDomainMovies(ctx context.Context, recommendations *tmdb.MovieRecommendations) []*domains.Movie {
-	if recommendations == nil || len(recommendations.Results) == 0 {
+func convertTMDBRecommendationsToDomainMovies(recommendations *tmdb.MovieRecommendations) []*domains.Movie {
+	if recommendations == nil || recommendations.MovieRecommendationsResults == nil || len(recommendations.Results) == 0 {
 		return []*domains.Movie{}
 	}
-	var domainMovies []*domains.Movie
-	domainMovies = make([]*domains.Movie, 0, len(recommendations.Results))
+	domainMovies := make([]*domains.Movie, 0, len(recommendations.Results))
 	for _, result := range recommendations.Results {
-		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
-		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
-			log.Printf("Error saving movie to repository: %v", err)
-		}
-		domainMovies = append(domainMovies, domainMovie)
+		domainMovies = append(domainMovies, domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now()))
 	}
 	return domainMovies
 }
@@ -307,7 +307,8 @@ func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page
 		}
 		return nil, err
 	}
-	results := s.convertTMDBSimilarToDomainMovies(ctx, similarMovies)
+	results := convertTMDBSimilarToDomainMovies(similarMovies)
+	s.persistMovies(ctx, results)
 	return domains.NewPaginatedMovies(similarMovies.Page, similarMovies.TotalPages, similarMovies.TotalResults, results), nil
 }
 func normalizeAndValidatePage(page string) (string, error) {
@@ -327,18 +328,13 @@ func isValidPage(page string) bool {
 	}
 	return n >= 1 && n <= maxTMDBPage
 }
-func (s *movieService) convertTMDBSimilarToDomainMovies(ctx context.Context, similar *tmdb.MovieSimilar) []*domains.Movie {
-	if similar == nil || len(similar.Results) == 0 {
+func convertTMDBSimilarToDomainMovies(similar *tmdb.MovieSimilar) []*domains.Movie {
+	if similar == nil || similar.MovieRecommendations == nil || similar.MovieRecommendationsResults == nil || len(similar.Results) == 0 {
 		return []*domains.Movie{}
 	}
-	var domainMovies []*domains.Movie
-	domainMovies = make([]*domains.Movie, 0, len(similar.Results))
+	domainMovies := make([]*domains.Movie, 0, len(similar.Results))
 	for _, result := range similar.Results {
-		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
-		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
-			log.Printf("Error saving movie to repository: %v", err)
-		}
-		domainMovies = append(domainMovies, domainMovie)
+		domainMovies = append(domainMovies, domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now()))
 	}
 	return domainMovies
 }
@@ -362,22 +358,18 @@ func (s *movieService) SearchMovies(ctx context.Context, search string, page str
 	if err != nil {
 		return nil, err
 	}
-	result := s.convertTMDBSearchToDomainMovies(ctx, searchResult)
+	result := convertTMDBSearchToDomainMovies(searchResult)
+	s.persistMovies(ctx, result)
 	return domains.NewPaginatedMovies(searchResult.Page, searchResult.TotalPages, searchResult.TotalResults, result), nil
 }
 
-func (s *movieService) convertTMDBSearchToDomainMovies(ctx context.Context, searchResult *tmdb.SearchMovies) []*domains.Movie {
-	if searchResult == nil || len(searchResult.Results) == 0 {
+func convertTMDBSearchToDomainMovies(searchResult *tmdb.SearchMovies) []*domains.Movie {
+	if searchResult == nil || searchResult.SearchMoviesResults == nil || len(searchResult.Results) == 0 {
 		return []*domains.Movie{}
 	}
-	var domainMovies []*domains.Movie
-	domainMovies = make([]*domains.Movie, 0, len(searchResult.Results))
+	domainMovies := make([]*domains.Movie, 0, len(searchResult.Results))
 	for _, result := range searchResult.Results {
-		domainMovie := domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now())
-		if err := s.movieRepository.SaveMovie(ctx, domainMovie); err != nil {
-			log.Printf("Error saving movie to repository: %v", err)
-		}
-		domainMovies = append(domainMovies, domainMovie)
+		domainMovies = append(domainMovies, domains.NewMovie(int32(result.ID), result.Title, result.PosterPath, time.Now()))
 	}
 	return domainMovies
 }
