@@ -3,7 +3,9 @@ package services
 import (
 	"encoding/json"
 	"letterbox/internal/domains"
+	"net/url"
 	"strconv"
+	"strings"
 )
 
 var cacheKeyVersion = "v1"
@@ -14,6 +16,18 @@ func getKeyForMovieByID(movieID int32) string {
 
 func getKeyForTrendingMovies(page string) string {
 	return "tmdb:" + cacheKeyVersion + ":trending:movie:day:page:" + page
+}
+
+func getKeyForRecommendations(movieID int32, page string) string {
+	return "tmdb:" + cacheKeyVersion + ":recommendations:movieID:" + strconv.Itoa(int(movieID)) + ":page:" + page
+}
+
+func getKeyForSimilarMovies(movieID int32, page string) string {
+	return "tmdb:" + cacheKeyVersion + ":similar:movieID:" + strconv.Itoa(int(movieID)) + ":page:" + page
+}
+
+func getKeyForSearchMovies(search, page string) string {
+	return "tmdb:" + cacheKeyVersion + ":search:movie:query:" + url.QueryEscape(strings.ToLower(search)) + ":page:" + page
 }
 
 func generateMovieFromCacheResult(result string) (*domains.Movie, error) {

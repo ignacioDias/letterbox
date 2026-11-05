@@ -113,6 +113,20 @@ func mustParseSearch(t *testing.T, body string) *tmdb.SearchMovies {
 	return &search
 }
 
+func newCacheMiss() *testutil.FakeCache {
+	return &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+}
+
 func TestGetMovieByID(t *testing.T) {
 	genericErr := errors.New("tmdb unavailable")
 	cachedMovie := &domains.Movie{TMDBID: 10, Title: "Cached"}
@@ -763,8 +777,8 @@ func TestGetTrendingMoviesCache(t *testing.T) {
 				if wantKey := getKeyForTrendingMovies(normalizedPage); cacheSetKey != wantKey {
 					t.Fatalf("cache.Set key = %q; want %q", cacheSetKey, wantKey)
 				}
-				if cacheSetTTL != trendingCacheTTLSeconds {
-					t.Fatalf("cache.Set TTL = %d; want %d", cacheSetTTL, trendingCacheTTLSeconds)
+				if cacheSetTTL != paginatedMoviesCacheTTLSeconds {
+					t.Fatalf("cache.Set TTL = %d; want %d", cacheSetTTL, paginatedMoviesCacheTTLSeconds)
 				}
 			}
 			if gotDelete := cacheDeleteCalls > 0; gotDelete != tt.wantCacheDelete {
@@ -906,6 +920,7 @@ func TestGetSimilarMovies(t *testing.T) {
 			client := &fakeTMDBMovieGetter{similar: tt.similar, similarErr: tt.similarErr}
 			svc := &movieService{
 				movieRepository: movieRepo,
+				cache:           newCacheMiss(),
 				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
 					if tt.clientErr != nil {
 						return nil, tt.clientErr
@@ -1106,6 +1121,7 @@ func TestGetRecommendationsForMovieByID(t *testing.T) {
 			client := &fakeTMDBMovieGetter{recommendations: tt.recommendations, recommendationsErr: tt.tmdbErr}
 			svc := &movieService{
 				movieRepository: movieRepo,
+				cache:           newCacheMiss(),
 				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
 					if tt.clientErr != nil {
 						return nil, tt.clientErr
@@ -1300,6 +1316,7 @@ func TestSearchMovies(t *testing.T) {
 			client := &fakeTMDBMovieGetter{search: tt.result, searchErr: tt.tmdbErr}
 			svc := &movieService{
 				movieRepository: movieRepo,
+				cache:           newCacheMiss(),
 				newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
 					if tt.clientErr != nil {
 						return nil, tt.clientErr
@@ -1491,4 +1508,218 @@ func assertDomainMovies(t *testing.T, got, want []*domains.Movie) {
 			t.Fatalf("movie %d = %+v; want %+v", i, got[i], want[i])
 		}
 	}
+}
+
+func TestPaginatedMovieListCaching(t *testing.T) {
+	cached := &domains.PaginatedMovies{
+		Page:         9,
+		TotalPages:   9,
+		TotalResults: 1,
+		Results: []*domains.Movie{
+			{TMDBID: 99, Title: "Cached", PosterPath: "/cached.jpg"},
+		},
+	}
+	cachedRaw, err := json.Marshal(cached)
+	if err != nil {
+		t.Fatalf("marshal cached movies: %v", err)
+	}
+
+	similar := mustParseSimilar(t, `{
+		"page": 2,
+		"total_pages": 10,
+		"total_results": 200,
+		"results": [{"id": 20, "title": "Interstellar", "poster_path": "/interstellar.jpg"}]
+	}`)
+	recommendations := mustParseRecommendations(t, `{
+		"page": 2,
+		"total_pages": 8,
+		"total_results": 160,
+		"results": [{"id": 30, "title": "Moon", "poster_path": "/moon.jpg"}]
+	}`)
+	search := mustParseSearch(t, `{
+		"page": 2,
+		"total_pages": 3,
+		"total_results": 45,
+		"results": [{"id": 21, "title": "Arrival", "poster_path": "/arrival.jpg"}]
+	}`)
+
+	endpoints := []struct {
+		name      string
+		page      string
+		call      func(context.Context, *movieService, string) (*domains.PaginatedMovies, error)
+		key       func(string) string
+		newClient func() *fakeTMDBMovieGetter
+		tmdbCalls func(*fakeTMDBMovieGetter) int
+	}{
+		{
+			name: "similar",
+			page: "2",
+			call: func(ctx context.Context, svc *movieService, page string) (*domains.PaginatedMovies, error) {
+				return svc.GetSimilarMovies(ctx, 550, page)
+			},
+			key: func(page string) string {
+				return getKeyForSimilarMovies(550, page)
+			},
+			newClient: func() *fakeTMDBMovieGetter {
+				return &fakeTMDBMovieGetter{similar: similar}
+			},
+			tmdbCalls: func(client *fakeTMDBMovieGetter) int {
+				return len(client.similarCalls)
+			},
+		},
+		{
+			name: "recommendations",
+			page: "2",
+			call: func(ctx context.Context, svc *movieService, page string) (*domains.PaginatedMovies, error) {
+				return svc.GetRecommendationsForMovieByID(ctx, 550, page)
+			},
+			key: func(page string) string {
+				return getKeyForRecommendations(550, page)
+			},
+			newClient: func() *fakeTMDBMovieGetter {
+				return &fakeTMDBMovieGetter{recommendations: recommendations}
+			},
+			tmdbCalls: func(client *fakeTMDBMovieGetter) int {
+				return len(client.recommendationCalls)
+			},
+		},
+		{
+			name: "search",
+			page: "2",
+			call: func(ctx context.Context, svc *movieService, page string) (*domains.PaginatedMovies, error) {
+				return svc.SearchMovies(ctx, "  arrival  ", page)
+			},
+			key: func(page string) string {
+				return getKeyForSearchMovies("arrival", page)
+			},
+			newClient: func() *fakeTMDBMovieGetter {
+				return &fakeTMDBMovieGetter{search: search}
+			},
+			tmdbCalls: func(client *fakeTMDBMovieGetter) int {
+				return len(client.searchCalls)
+			},
+		},
+	}
+
+	for _, ep := range endpoints {
+		t.Run(ep.name, func(t *testing.T) {
+			t.Run("returns cached movies without calling tmdb", func(t *testing.T) {
+				getCalls := 0
+				fakeCache := &testutil.FakeCache{
+					GetFunc: func(_ context.Context, key string) (string, error) {
+						getCalls++
+						if want := ep.key(ep.page); key != want {
+							t.Fatalf("cache.Get key = %q; want %q", key, want)
+						}
+						return string(cachedRaw), nil
+					},
+					SetFunc: func(context.Context, string, string, int) error {
+						t.Fatal("cache.Set called on cache hit")
+						return nil
+					},
+					DeleteFunc: func(context.Context, []string) (int64, error) {
+						t.Fatal("cache.Delete called on cache hit")
+						return 0, nil
+					},
+				}
+				client := ep.newClient()
+				svc := &movieService{
+					movieRepository: &testutil.FakeMovieRepository{
+						SaveMovieFunc: func(context.Context, *domains.Movie) error {
+							t.Fatal("SaveMovie called on cache hit")
+							return nil
+						},
+					},
+					cache: fakeCache,
+					newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+						return client, nil
+					},
+				}
+
+				got, err := ep.call(context.Background(), svc, ep.page)
+				if err != nil {
+					t.Fatalf("%s error = %v; want nil", ep.name, err)
+				}
+				if getCalls != 1 {
+					t.Fatalf("cache.Get called %d times; want 1", getCalls)
+				}
+				if calls := ep.tmdbCalls(client); calls != 0 {
+					t.Fatalf("TMDB called %d times; want 0", calls)
+				}
+				assertPaginatedMovies(t, got, cached)
+			})
+
+			t.Run("caches tmdb result on cache miss", func(t *testing.T) {
+				setCalls := 0
+				var setKey string
+				var setTTL int
+				fakeCache := &testutil.FakeCache{
+					GetFunc: func(context.Context, string) (string, error) {
+						return "", cache.ErrKeyNotFound
+					},
+					SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+						setCalls++
+						setKey = key
+						setTTL = expiringTimeInSeconds
+						return nil
+					},
+					DeleteFunc: func(context.Context, []string) (int64, error) {
+						return 0, nil
+					},
+				}
+				client := ep.newClient()
+				svc := &movieService{
+					movieRepository: &testutil.FakeMovieRepository{
+						SaveMovieFunc: func(context.Context, *domains.Movie) error {
+							return nil
+						},
+					},
+					cache: fakeCache,
+					newTMDBClient: func(context.Context) (tmdbMovieGetter, error) {
+						return client, nil
+					},
+				}
+
+				got, err := ep.call(context.Background(), svc, ep.page)
+				if err != nil {
+					t.Fatalf("%s error = %v; want nil", ep.name, err)
+				}
+				if got == nil {
+					t.Fatalf("%s = nil; want result", ep.name)
+				}
+				if calls := ep.tmdbCalls(client); calls != 1 {
+					t.Fatalf("TMDB called %d times; want 1", calls)
+				}
+				if setCalls != 1 {
+					t.Fatalf("cache.Set called %d times; want 1", setCalls)
+				}
+				if want := ep.key(ep.page); setKey != want {
+					t.Fatalf("cache.Set key = %q; want %q", setKey, want)
+				}
+				if setTTL != paginatedMoviesCacheTTLSeconds {
+					t.Fatalf("cache.Set TTL = %d; want %d", setTTL, paginatedMoviesCacheTTLSeconds)
+				}
+			})
+		})
+	}
+}
+
+func TestSearchMoviesCacheKeyIsCaseInsensitive(t *testing.T) {
+	got := getKeyForSearchMovies("Arrival", "2")
+	want := getKeyForSearchMovies("arrival", "2")
+	if got != want {
+		t.Fatalf("cache keys differ by case: %q != %q", got, want)
+	}
+}
+
+func assertPaginatedMovies(t *testing.T, got, want *domains.PaginatedMovies) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("got nil; want %+v", want)
+	}
+	if got.Page != want.Page || got.TotalPages != want.TotalPages || got.TotalResults != want.TotalResults {
+		t.Fatalf("metadata = page %d, total pages %d, total results %d; want %d, %d, %d",
+			got.Page, got.TotalPages, got.TotalResults, want.Page, want.TotalPages, want.TotalResults)
+	}
+	assertDomainMovies(t, got.Results, want.Results)
 }

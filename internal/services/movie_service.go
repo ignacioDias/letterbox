@@ -38,7 +38,7 @@ const maxTMDBPage = 500
 
 var movieCacheTTLSeconds = 86400
 
-var trendingCacheTTLSeconds = 86400
+var paginatedMoviesCacheTTLSeconds = 86400
 
 var ErrInvalidPage = errors.New("invalid page number")
 var ErrInvalidSearchQuery = errors.New("invalid search query")
@@ -179,7 +179,8 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 	if err != nil {
 		return nil, err
 	}
-	movies, found, err := s.getTrendingMoviesFromCache(ctx, normalizedPage)
+	key := getKeyForTrendingMovies(normalizedPage)
+	movies, found, err := s.getPaginatedMoviesFromCache(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -203,13 +204,12 @@ func (s *movieService) GetTrendingMovies(ctx context.Context, page string) (*dom
 	s.persistMovies(ctx, results)
 	movies = domains.NewPaginatedMovies(trending.Page, trending.TotalPages, trending.TotalResults, results)
 
-	s.cacheTrendingMovies(ctx, normalizedPage, movies)
+	s.cachePaginatedMovies(ctx, key, movies)
 
 	return movies, nil
 }
 
-func (s *movieService) getTrendingMoviesFromCache(ctx context.Context, page string) (*domains.PaginatedMovies, bool, error) {
-	key := getKeyForTrendingMovies(page)
+func (s *movieService) getPaginatedMoviesFromCache(ctx context.Context, key string) (*domains.PaginatedMovies, bool, error) {
 	result, err := s.cache.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, cache.ErrKeyNotFound) {
@@ -218,29 +218,28 @@ func (s *movieService) getTrendingMoviesFromCache(ctx context.Context, page stri
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, false, ctxErr
 		}
-		log.Printf("Error reading trending movies from cache: %v", err)
+		log.Printf("Error reading paginated movies from cache: %v", err)
 		return nil, false, nil
 	}
 	movies, err := generatePaginatedMoviesFromCacheResult(result)
 	if err == nil {
 		return movies, true, nil
 	}
-	log.Printf("Error decoding cached trending movies: %v", err)
+	log.Printf("Error decoding cached paginated movies: %v", err)
 	if _, err := s.cache.Delete(ctx, []string{key}); err != nil {
-		log.Printf("Error deleting corrupt cached trending movies: %v", err)
+		log.Printf("Error deleting corrupt cached paginated movies: %v", err)
 	}
 	return nil, false, nil
 }
 
-func (s *movieService) cacheTrendingMovies(ctx context.Context, page string, movies *domains.PaginatedMovies) {
+func (s *movieService) cachePaginatedMovies(ctx context.Context, key string, movies *domains.PaginatedMovies) {
 	value, err := generateCacheValueFromPaginatedMovies(movies)
 	if err != nil {
-		log.Printf("Error encoding trending movies for cache: %v", err)
+		log.Printf("Error encoding paginated movies for cache: %v", err)
 		return
 	}
-	key := getKeyForTrendingMovies(page)
-	if err := s.cache.Set(ctx, key, value, trendingCacheTTLSeconds); err != nil {
-		log.Printf("Error saving trending movies to cache: %v", err)
+	if err := s.cache.Set(ctx, key, value, paginatedMoviesCacheTTLSeconds); err != nil {
+		log.Printf("Error saving paginated movies to cache: %v", err)
 	}
 }
 
@@ -260,6 +259,14 @@ func (s *movieService) GetRecommendationsForMovieByID(ctx context.Context, movie
 	if err != nil {
 		return nil, err
 	}
+	key := getKeyForRecommendations(movieID, normalizedPage)
+	movies, found, err := s.getPaginatedMoviesFromCache(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return movies, nil
+	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
@@ -275,7 +282,9 @@ func (s *movieService) GetRecommendationsForMovieByID(ctx context.Context, movie
 	}
 	results := convertTMDBRecommendationsToDomainMovies(recommendations)
 	s.persistMovies(ctx, results)
-	return domains.NewPaginatedMovies(recommendations.Page, recommendations.TotalPages, recommendations.TotalResults, results), nil
+	movies = domains.NewPaginatedMovies(recommendations.Page, recommendations.TotalPages, recommendations.TotalResults, results)
+	s.cachePaginatedMovies(ctx, key, movies)
+	return movies, nil
 }
 
 func convertTMDBRecommendationsToDomainMovies(recommendations *tmdb.MovieRecommendations) []*domains.Movie {
@@ -294,6 +303,14 @@ func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page
 	if err != nil {
 		return nil, err
 	}
+	key := getKeyForSimilarMovies(movieID, normalizedPage)
+	movies, found, err := s.getPaginatedMoviesFromCache(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return movies, nil
+	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
@@ -309,7 +326,9 @@ func (s *movieService) GetSimilarMovies(ctx context.Context, movieID int32, page
 	}
 	results := convertTMDBSimilarToDomainMovies(similarMovies)
 	s.persistMovies(ctx, results)
-	return domains.NewPaginatedMovies(similarMovies.Page, similarMovies.TotalPages, similarMovies.TotalResults, results), nil
+	movies = domains.NewPaginatedMovies(similarMovies.Page, similarMovies.TotalPages, similarMovies.TotalResults, results)
+	s.cachePaginatedMovies(ctx, key, movies)
+	return movies, nil
 }
 func normalizeAndValidatePage(page string) (string, error) {
 	if page == "" {
@@ -348,6 +367,14 @@ func (s *movieService) SearchMovies(ctx context.Context, search string, page str
 	if err != nil {
 		return nil, err
 	}
+	key := getKeyForSearchMovies(search, page)
+	movies, found, err := s.getPaginatedMoviesFromCache(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return movies, nil
+	}
 	tmdbClient, err := s.newTMDBClient(ctx)
 	if err != nil {
 		return nil, err
@@ -360,7 +387,9 @@ func (s *movieService) SearchMovies(ctx context.Context, search string, page str
 	}
 	result := convertTMDBSearchToDomainMovies(searchResult)
 	s.persistMovies(ctx, result)
-	return domains.NewPaginatedMovies(searchResult.Page, searchResult.TotalPages, searchResult.TotalResults, result), nil
+	movies = domains.NewPaginatedMovies(searchResult.Page, searchResult.TotalPages, searchResult.TotalResults, result)
+	s.cachePaginatedMovies(ctx, key, movies)
+	return movies, nil
 }
 
 func convertTMDBSearchToDomainMovies(searchResult *tmdb.SearchMovies) []*domains.Movie {
