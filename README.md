@@ -5,8 +5,9 @@ with cookie-based sessions, manage their profile, search other users by username
 follow other users, block or unblock them, and create, update, delete, and list reviews. Reviews can be listed per
 user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
 Movies can be looked up by TMDB id, searched, listed from TMDB's daily trending feed, or
-expanded with similar titles, with results cached locally. The data model is prepared for
-comments; comment endpoints are not implemented yet.
+expanded with similar titles and recommendations, with results cached in Valkey and
+PostgreSQL. The data model is prepared for comments; comment endpoints are not
+implemented yet.
 
 There is a [vibe coded frontend for this project](https://github.com/ignacioDias/frontend-letterbox).
 
@@ -43,7 +44,9 @@ own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
 stays out of handlers and services. `MovieRepository` reads and writes a local `movies`
 table keyed by TMDB id. Movie lookups are served from Valkey first, then the `movies`
 table, and on a miss `MovieService` fetches the movie from TMDB and stores it in both
-before returning it.
+before returning it. Trending, similar, recommended, and search results are cached in
+Valkey per page (24-hour TTL), and each returned movie is persisted best-effort to the
+`movies` table.
 
 ## Getting started
 
@@ -208,28 +211,37 @@ hours.
 `GET /movies/trending` is public and returns TMDB's daily trending movies. It accepts
 `page` (1-500, default `1`) and returns `page`, `totalPages`, `totalResults`, and a
 `results` array whose items use the same shape as movie lookups (`tmdbId`, `title`,
-`posterPath`, `cachedAt`). Trending results are cached in `movies` on a best-effort
-basis: cache write failures are logged but do not fail the request. It returns `400 Bad
-Request` for invalid pages and `500 Internal Server Error` for TMDB failures (including a
-missing `TMDB_API_KEY`).
+`posterPath`, `cachedAt`). Results are cached per page in Valkey for 24 hours (key
+`tmdb:v1:trending:movie:day:page:<page>`), and each movie is persisted best-effort to
+`movies`. Cache read/write failures are logged and fall back to TMDB, and corrupt entries
+are evicted, so they do not fail the request. It returns `400 Bad Request` for invalid
+pages and `500 Internal Server Error` for TMDB failures (including a missing
+`TMDB_API_KEY`).
 
 `GET /movies/{movie_id}/similar` is public and returns TMDB's similar movies for a
 movie. It accepts `page` (1-500, default `1`) and uses the same paginated response shape
-as trending, caching results best-effort. It returns `400 Bad Request` for invalid movie
-IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal Server Error`
-for other TMDB failures (including a missing `TMDB_API_KEY`).
+as trending. Results are cached per page in Valkey for 24 hours (key
+`tmdb:v1:similar:movieID:<id>:page:<page>`) and persisted best-effort to `movies`, with
+the same cache-failure fallback as trending. It returns `400 Bad Request` for invalid
+movie IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal Server
+Error` for other TMDB failures (including a missing `TMDB_API_KEY`).
 
 `GET /movies/{movie_id}/recommendations` is public and returns TMDB's recommended
 movies for a movie. It accepts `page` (1-500, default `1`) and uses the same paginated
-response shape as trending, caching results best-effort. It returns `400 Bad Request` for
+response shape as trending. Results are cached per page in Valkey for 24 hours (key
+`tmdb:v1:recommendations:movieID:<id>:page:<page>`) and persisted best-effort to `movies`,
+with the same cache-failure fallback as trending. It returns `400 Bad Request` for
 invalid movie IDs or pages, `404 Not Found` if TMDB has no such movie, and `500 Internal
 Server Error` for other TMDB failures (including a missing `TMDB_API_KEY`).
 
 `GET /movies/search` is public and searches TMDB for movies. `search` is required and
 surrounding whitespace is trimmed; `page` (1-500, default `1`) is optional. It uses the
-same paginated response shape as trending, caching results best-effort. It returns `400
-Bad Request` for a blank `search` or invalid page, and `500 Internal Server Error` for TMDB
-failures (including a missing `TMDB_API_KEY`).
+same paginated response shape as trending. Results are cached per page in Valkey for 24
+hours (key `tmdb:v1:search:movie:query:<query>:page:<page>`); the query is lowercased and
+URL-escaped in the key, so searches that differ only by case share an entry. Each movie
+is persisted best-effort to `movies`, with the same cache-failure fallback as trending.
+It returns `400 Bad Request` for a blank `search` or invalid page, and `500 Internal
+Server Error` for TMDB failures (including a missing `TMDB_API_KEY`).
 
 ### Request body limits
 
@@ -412,10 +424,11 @@ go test -race ./...
 ```
 
 Unit tests cover services (including user search, review listing, creation, update,
-deletion, average rating, review counts, reactions, and movie lookup, search, trending,
-similar and recommended movies with a faked TMDB client), handlers (including user
-search, movie status and page mapping, and JSON body limits), middleware, and repository
-helpers (including LIKE-pattern escaping). They use fakes from
+deletion, average rating, review counts, reactions, movie lookup, search, trending,
+similar and recommended movies with a faked TMDB client, and paginated cache behavior
+including case-insensitive search cache keys), handlers (including user search, movie
+status and page mapping, and JSON body limits), middleware, and repository helpers
+(including LIKE-pattern escaping). They use fakes from
 `internal/testutil`. Repository integration tests are not included because they require
 a running PostgreSQL instance.
 
@@ -430,10 +443,11 @@ a running PostgreSQL instance.
   implemented: `GET /movies/{movie_id}` checks Valkey (24-hour TTL) before the local
   `movies` table and falls back to TMDB on a miss, while `GET /movies/search`,
   `GET /movies/trending`, `GET /movies/{movie_id}/similar`, and
-  `GET /movies/{movie_id}/recommendations` paginate TMDB results and cache them
-  best-effort in PostgreSQL, where entries never expire.
-- The Valkey cache currently covers only single-movie lookups; search, trending,
-  similar, and recommended movies write only to PostgreSQL.
+  `GET /movies/{movie_id}/recommendations` paginate TMDB results, cache each page in
+  Valkey for 24 hours, and persist the returned movies best-effort to PostgreSQL, where
+  entries never expire.
+- Paginated Valkey keys are versioned under `tmdb:v1:` and include the page, movie ID,
+  or normalized search query as appropriate; missing TMDB IDs are not cached negatively.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
@@ -451,8 +465,7 @@ a running PostgreSQL instance.
 - **Google login:** add Google OAuth as an alternative sign-in/sign-up flow. It should
   link a Google account to an existing user (or create one), then issue the same
   cookie-based session as the current login endpoint.
-- **Caching:** extend the Valkey cache beyond single-movie lookups (search, trending,
-  similar, and recommendations), add short-lived negative caching for missing TMDB IDs,
-  and consider TTL or invalidation for the PostgreSQL TMDB data, which never expires.
+- **Caching:** add short-lived negative caching for missing TMDB IDs, and consider TTL
+  or invalidation for the PostgreSQL TMDB data, which never expires.
 - Comments: implement comments for reviews and, at the same time, comments itself.
 - Messaging system: for users that follow each other
