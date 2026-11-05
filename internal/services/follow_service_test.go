@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/testutil"
@@ -92,6 +93,9 @@ func TestFollowUserByUsername(t *testing.T) {
 				GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
 					return tt.targetID, tt.targetErr
 				},
+				GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+					return &domains.User{ID: tt.follower, Username: "ada"}, nil
+				},
 			}
 			blockRepo := &testutil.FakeBlockRepository{
 				IsBlockedBetweenFunc: func(context.Context, int64, int64) (bool, error) {
@@ -99,7 +103,7 @@ func TestFollowUserByUsername(t *testing.T) {
 				},
 			}
 
-			svc := NewFollowService(followRepo, userRepo, blockRepo)
+			svc := NewFollowService(followRepo, userRepo, blockRepo, newCacheMiss())
 			err := svc.FollowUserByUsername(context.Background(), tt.follower, tt.username)
 
 			if tt.wantErr != nil {
@@ -189,9 +193,12 @@ func TestUnfollowUserByUsername(t *testing.T) {
 				GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
 					return tt.targetID, tt.targetErr
 				},
+				GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+					return &domains.User{ID: tt.follower, Username: "ada"}, nil
+				},
 			}
 
-			svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{})
+			svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{}, newCacheMiss())
 			err := svc.UnfollowUserByUsername(context.Background(), tt.follower, tt.username)
 
 			if tt.wantErr != nil {
@@ -227,7 +234,7 @@ func TestFollowListings(t *testing.T) {
 			return users, nil
 		},
 	}
-	svc := NewFollowService(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
+	svc := NewFollowService(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, newCacheMiss())
 	ctx := context.Background()
 
 	got, err := svc.GetFollowersByUsername(ctx, "  ada  ", 10, 5)
@@ -304,7 +311,7 @@ func testFollowCount(t *testing.T, call func(context.Context, FollowService, str
 				},
 			}
 
-			svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{})
+			svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{}, newCacheMiss())
 			got, err := call(context.Background(), svc, tt.username)
 
 			if tt.wantErr != nil {
@@ -336,4 +343,215 @@ func TestGetFollowingCountByUsername(t *testing.T) {
 	testFollowCount(t, func(ctx context.Context, svc FollowService, username string) (int, error) {
 		return svc.GetFollowingCountByUsername(ctx, username)
 	})
+}
+
+func TestGetFollowersByUsernameCacheHit(t *testing.T) {
+	users := []*domains.PublicUser{{ID: 1, Username: "grace"}}
+	value, err := generateCacheValueFromPublicUsers(users)
+	if err != nil {
+		t.Fatalf("encode cached users: %v", err)
+	}
+	generation := "generation-1"
+	listKey := getKeyForFollowList(followKindFollowers, "ada", 10, 5, generation)
+	generationKey := getKeyForFollowGeneration(followKindFollowers, "ada")
+
+	repoCalled := false
+	followRepo := &testutil.FakeFollowRepository{
+		GetFollowersByUsernameFunc: func(context.Context, string, int, int) ([]*domains.PublicUser, error) {
+			repoCalled = true
+			return nil, errors.New("repository should not be called")
+		},
+	}
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(_ context.Context, key string) (string, error) {
+			switch key {
+			case generationKey:
+				return generation, nil
+			case listKey:
+				return value, nil
+			default:
+				return "", cache.ErrKeyNotFound
+			}
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	svc := NewFollowService(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, fakeCache)
+
+	got, err := svc.GetFollowersByUsername(context.Background(), "ada", 10, 5)
+	if err != nil {
+		t.Fatalf("GetFollowersByUsername: %v", err)
+	}
+	if repoCalled {
+		t.Fatal("GetFollowersByUsername called repository on cache hit")
+	}
+	if len(got) != 1 || got[0].Username != "grace" {
+		t.Fatalf("GetFollowersByUsername returned %+v", got)
+	}
+}
+
+func TestGetFollowingByUsernameCacheMissCachesResult(t *testing.T) {
+	users := []*domains.PublicUser{{ID: 1, Username: "grace"}}
+	wantKey := getKeyForFollowList(followKindFollowing, "ada", 10, 0, "0")
+
+	var setKey string
+	var setTTL int
+	followRepo := &testutil.FakeFollowRepository{
+		GetFollowingByUsernameFunc: func(_ context.Context, username string, limit, offset int) ([]*domains.PublicUser, error) {
+			if username != "ada" || limit != 10 || offset != 0 {
+				t.Fatalf("GetFollowingByUsername(%q, %d, %d); want ada, 10, 0", username, limit, offset)
+			}
+			return users, nil
+		},
+	}
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+			setKey = key
+			setTTL = expiringTimeInSeconds
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	svc := NewFollowService(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{}, fakeCache)
+
+	got, err := svc.GetFollowingByUsername(context.Background(), "ada", 10, 0)
+	if err != nil {
+		t.Fatalf("GetFollowingByUsername: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "grace" {
+		t.Fatalf("GetFollowingByUsername returned %+v", got)
+	}
+	if setKey != wantKey {
+		t.Fatalf("cache.Set key = %q; want %q", setKey, wantKey)
+	}
+	if setTTL != followCacheTTLSeconds {
+		t.Fatalf("cache.Set TTL = %d; want %d", setTTL, followCacheTTLSeconds)
+	}
+}
+
+func TestGetFollowersCountByUsernameCacheHit(t *testing.T) {
+	countKey := getKeyForFollowCount(followKindFollowers, "ada")
+	userRepoCalled := false
+	followRepoCalled := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(_ context.Context, key string) (string, error) {
+			if key != countKey {
+				t.Fatalf("cache.Get(%q); want %q", key, countKey)
+			}
+			return "3", nil
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
+			userRepoCalled = true
+			return 0, nil
+		},
+	}
+	followRepo := &testutil.FakeFollowRepository{
+		GetFollowersCountByUserIDFunc: func(context.Context, int64) (int, error) {
+			followRepoCalled = true
+			return 0, nil
+		},
+	}
+	svc := NewFollowService(followRepo, userRepo, &testutil.FakeBlockRepository{}, fakeCache)
+
+	count, err := svc.GetFollowersCountByUsername(context.Background(), "ada")
+	if err != nil {
+		t.Fatalf("GetFollowersCountByUsername: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("count = %d; want 3", count)
+	}
+	if userRepoCalled || followRepoCalled {
+		t.Fatal("GetFollowersCountByUsername hit repositories on cache hit")
+	}
+}
+
+func TestFollowUserByUsernameInvalidatesCache(t *testing.T) {
+	var deletedKeys []string
+	var generationKeys []string
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+			if expiringTimeInSeconds != followCacheTTLSeconds {
+				t.Fatalf("cache.Set TTL = %d; want %d", expiringTimeInSeconds, followCacheTTLSeconds)
+			}
+			generationKeys = append(generationKeys, key)
+			return nil
+		},
+		DeleteFunc: func(_ context.Context, keys []string) (int64, error) {
+			deletedKeys = append(deletedKeys, keys...)
+			return int64(len(keys)), nil
+		},
+	}
+	followRepo := &testutil.FakeFollowRepository{
+		FollowUserFunc: func(context.Context, int64, int64) error {
+			return nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
+			return 42, nil
+		},
+		GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+			return &domains.User{ID: 7, Username: "ada"}, nil
+		},
+	}
+	blockRepo := &testutil.FakeBlockRepository{
+		IsBlockedBetweenFunc: func(context.Context, int64, int64) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := NewFollowService(followRepo, userRepo, blockRepo, fakeCache)
+
+	if err := svc.FollowUserByUsername(context.Background(), 7, "grace"); err != nil {
+		t.Fatalf("FollowUserByUsername: %v", err)
+	}
+
+	wantDeleted := map[string]bool{
+		getKeyForFollowCount(followKindFollowers, "grace"): false,
+		getKeyForFollowCount(followKindFollowing, "ada"):   false,
+	}
+	for _, key := range deletedKeys {
+		if _, ok := wantDeleted[key]; ok {
+			wantDeleted[key] = true
+		}
+	}
+	for key, found := range wantDeleted {
+		if !found {
+			t.Fatalf("cache.Delete did not include %q (deleted %v)", key, deletedKeys)
+		}
+	}
+
+	wantGenerations := map[string]bool{
+		getKeyForFollowGeneration(followKindFollowers, "grace"): false,
+		getKeyForFollowGeneration(followKindFollowing, "ada"):   false,
+	}
+	for _, key := range generationKeys {
+		if _, ok := wantGenerations[key]; ok {
+			wantGenerations[key] = true
+		}
+	}
+	for key, found := range wantGenerations {
+		if !found {
+			t.Fatalf("cache.Set did not include %q (set %v)", key, generationKeys)
+		}
+	}
 }

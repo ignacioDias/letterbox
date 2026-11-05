@@ -48,6 +48,13 @@ before returning it. Trending, similar, recommended, and search results are cach
 Valkey per page (24-hour TTL), and each returned movie is persisted best-effort to the
 `movies` table.
 
+Follower/following lists and counts are cached in Valkey for 1 hour. List entries are
+keyed by username, pagination, and a per-user generation; counts are keyed by username.
+On a cache miss the result is loaded from PostgreSQL and written back to Valkey. Following
+or unfollowing resets the target user's follower-list generation and the follower's
+following-list generation, so every cached pagination for those lists becomes unreachable
+immediately, and deletes both affected count entries. Old list entries expire naturally.
+
 ## Getting started
 
 Requirements: Go 1.27+ and Docker.
@@ -131,6 +138,13 @@ Base path: `/api/v1`
 Follower/following lists, a user's reviews, the following feed, and a movie's reviews
 accept `limit` (1-100, default 20) and `offset` (default 0). Count endpoints return
 `{"count": N}`. Follow and block actions return `204 No Content` on success.
+
+Follower/following lists and counts are cached in Valkey for 1 hour under `follow:v1:`
+keys. Lists include the username, `limit`, `offset`, and a per-user generation; counts
+are keyed by username. Cache misses load from PostgreSQL and populate Valkey. Cache
+read/write failures are logged and fall back to PostgreSQL, and corrupt entries are
+evicted. Following or unfollowing resets the relevant list generations and deletes the
+two affected count entries, so cached lists and counts are never returned stale.
 
 `GET /users/search` is public and searches usernames case-insensitively. `search` is
 required and surrounding whitespace is trimmed; `limit` (1-100, default 20) and `offset`
@@ -425,10 +439,11 @@ go test -race ./...
 
 Unit tests cover services (including user search, review listing, creation, update,
 deletion, average rating, review counts, reactions, movie lookup, search, trending,
-similar and recommended movies with a faked TMDB client, and paginated cache behavior
-including case-insensitive search cache keys), handlers (including user search, movie
-status and page mapping, and JSON body limits), middleware, and repository helpers
-(including LIKE-pattern escaping). They use fakes from
+similar and recommended movies with a faked TMDB client, paginated cache behavior
+including case-insensitive search cache keys, and follower/following cache hits, writes,
+and invalidation), handlers (including user search, movie status and page mapping, and
+JSON body limits), middleware, and repository helpers (including LIKE-pattern escaping).
+They use fakes from
 `internal/testutil`. Repository integration tests are not included because they require
 a running PostgreSQL instance.
 
@@ -448,6 +463,10 @@ a running PostgreSQL instance.
   entries never expire.
 - Paginated Valkey keys are versioned under `tmdb:v1:` and include the page, movie ID,
   or normalized search query as appropriate; missing TMDB IDs are not cached negatively.
+- Follower/following lists and counts are cached under `follow:v1:` keys for 1 hour. Lists
+  include a per-user generation plus pagination, so follow/unfollow resets the relevant
+  generations instead of enumerating every cached page; the two affected count keys are
+  deleted directly.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for

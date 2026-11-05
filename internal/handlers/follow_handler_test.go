@@ -8,11 +8,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/testutil"
 )
+
+func newFollowTestHandler(followRepo repositories.FollowRepository, userRepo repositories.UserRepository, blockRepo repositories.BlockRepository) FollowHandler {
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	return NewFollowHandler(followRepo, userRepo, blockRepo, fakeCache)
+}
 
 func authenticatedRequest(t *testing.T, handler http.HandlerFunc, userID int64, username string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -67,6 +83,9 @@ func TestFollowUserHandler(t *testing.T) {
 				GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
 					return tt.targetID, tt.targetErr
 				},
+				GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+					return &domains.User{ID: tt.userID, Username: "ada"}, nil
+				},
 			}
 			blockRepo := &testutil.FakeBlockRepository{
 				IsBlockedBetweenFunc: func(context.Context, int64, int64) (bool, error) {
@@ -74,7 +93,7 @@ func TestFollowUserHandler(t *testing.T) {
 				},
 			}
 
-			handler := NewFollowHandler(followRepo, userRepo, blockRepo)
+			handler := newFollowTestHandler(followRepo, userRepo, blockRepo)
 			rec := authenticatedRequest(t, handler.FollowUserByUsername, tt.userID, tt.username)
 
 			if rec.Code != tt.wantStatus {
@@ -85,7 +104,7 @@ func TestFollowUserHandler(t *testing.T) {
 }
 
 func TestFollowUserHandlerWithoutAuth(t *testing.T) {
-	handler := NewFollowHandler(&testutil.FakeFollowRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
+	handler := newFollowTestHandler(&testutil.FakeFollowRepository{}, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.SetPathValue("username", "grace")
@@ -128,9 +147,12 @@ func TestUnfollowUserHandler(t *testing.T) {
 				GetUserIDByUsernameFunc: func(context.Context, string) (int64, error) {
 					return tt.targetID, tt.targetErr
 				},
+				GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+					return &domains.User{ID: tt.userID, Username: "ada"}, nil
+				},
 			}
 
-			handler := NewFollowHandler(followRepo, userRepo, &testutil.FakeBlockRepository{})
+			handler := newFollowTestHandler(followRepo, userRepo, &testutil.FakeBlockRepository{})
 			rec := authenticatedRequest(t, handler.UnfollowUserByUsername, tt.userID, tt.username)
 
 			if rec.Code != tt.wantStatus {
@@ -168,7 +190,7 @@ func TestGetFollowersHandler(t *testing.T) {
 					return tt.users, tt.repoErr
 				},
 			}
-			handler := NewFollowHandler(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
+			handler := newFollowTestHandler(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 
 			req := httptest.NewRequest(http.MethodGet, "/"+tt.query, nil)
 			req.SetPathValue("username", tt.username)
@@ -208,7 +230,7 @@ func TestGetFollowingHandler(t *testing.T) {
 					return tt.users, tt.repoErr
 				},
 			}
-			handler := NewFollowHandler(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
+			handler := newFollowTestHandler(followRepo, &testutil.FakeUserRepository{}, &testutil.FakeBlockRepository{})
 
 			req := httptest.NewRequest(http.MethodGet, "/"+tt.query, nil)
 			req.SetPathValue("username", tt.username)
@@ -269,7 +291,7 @@ func TestFollowCountHandlers(t *testing.T) {
 					},
 				}
 
-				handler := NewFollowHandler(followRepo, userRepo, &testutil.FakeBlockRepository{})
+				handler := newFollowTestHandler(followRepo, userRepo, &testutil.FakeBlockRepository{})
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				req.SetPathValue("username", tt.username)
 				rec := httptest.NewRecorder()

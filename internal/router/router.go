@@ -31,7 +31,7 @@ func NewRouter(db *database.Database, cache cache.Cache) Router {
 		cache:           cache,
 		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
 		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
-		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository),
+		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository, cache),
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
 		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository),
 		reactionHandler: handlers.NewReactionHandler(db.ReactionRepository),
@@ -57,11 +57,11 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("GET /api/v1/users/search", r.userHandler.SearchUsers)                    //TODO: Implement cache
 
 	// Follow routes
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)            //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowersCountByUsername) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers/count", r.followHandler.GetFollowersCountByUsername)
 
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)            //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowingCountByUsername) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following", r.followHandler.GetFollowingByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}/following/count", r.followHandler.GetFollowingCountByUsername)
 
 	r.mux.HandleFunc("POST /api/v1/users/username/{username}/follow", r.auth.Authenticate(r.followHandler.FollowUserByUsername))
 	r.mux.HandleFunc("DELETE /api/v1/users/username/{username}/unfollow", r.auth.Authenticate(r.followHandler.UnfollowUserByUsername))

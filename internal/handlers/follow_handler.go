@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -22,9 +23,9 @@ type followHandler struct {
 	followServices services.FollowService
 }
 
-func NewFollowHandler(followRepository repositories.FollowRepository, userRepository repositories.UserRepository, blockRepository repositories.BlockRepository) FollowHandler {
+func NewFollowHandler(followRepository repositories.FollowRepository, userRepository repositories.UserRepository, blockRepository repositories.BlockRepository, caches ...cache.Cache) FollowHandler {
 	return &followHandler{
-		followServices: services.NewFollowService(followRepository, userRepository, blockRepository),
+		followServices: services.NewFollowService(followRepository, userRepository, blockRepository, caches...),
 	}
 }
 

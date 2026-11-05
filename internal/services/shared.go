@@ -30,6 +30,18 @@ func getKeyForSearchMovies(search, page string) string {
 	return "tmdb:" + cacheKeyVersion + ":search:movie:query:" + url.QueryEscape(strings.ToLower(search)) + ":page:" + page
 }
 
+func getKeyForFollowGeneration(kind, username string) string {
+	return "follow:" + cacheKeyVersion + ":" + kind + ":generation:user:" + username
+}
+
+func getKeyForFollowList(kind, username string, limit, offset int, generation string) string {
+	return "follow:" + cacheKeyVersion + ":" + kind + ":user:" + username + ":generation:" + generation + ":limit:" + strconv.Itoa(limit) + ":offset:" + strconv.Itoa(offset)
+}
+
+func getKeyForFollowCount(kind, username string) string {
+	return "follow:" + cacheKeyVersion + ":" + kind + ":count:user:" + username
+}
+
 func generateMovieFromCacheResult(result string) (*domains.Movie, error) {
 	var movie domains.Movie
 	if err := json.Unmarshal([]byte(result), &movie); err != nil {
@@ -60,4 +72,20 @@ func generateCacheValueFromPaginatedMovies(movies *domains.PaginatedMovies) (str
 		return "", err
 	}
 	return string(moviesJSON), nil
+}
+
+func generatePublicUsersFromCacheResult(result string) ([]*domains.PublicUser, error) {
+	var users []*domains.PublicUser
+	if err := json.Unmarshal([]byte(result), &users); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func generateCacheValueFromPublicUsers(users []*domains.PublicUser) (string, error) {
+	usersJSON, err := json.Marshal(users)
+	if err != nil {
+		return "", err
+	}
+	return string(usersJSON), nil
 }
