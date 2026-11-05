@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
@@ -24,14 +25,24 @@ type AuthService interface {
 type authService struct {
 	userRepository    repositories.UserRepository
 	sessionRepository repositories.SessionRepository
+	cache             cache.Cache
+	cacheEnabled      bool
 }
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
-func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthService {
+func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository, caches ...cache.Cache) AuthService {
+	authCache := cache.Cache(noopCache{})
+	cacheEnabled := false
+	if len(caches) > 0 && caches[0] != nil {
+		authCache = caches[0]
+		cacheEnabled = true
+	}
 	return &authService{
 		userRepository:    userRepo,
 		sessionRepository: sessionRepo,
+		cache:             authCache,
+		cacheEnabled:      cacheEnabled,
 	}
 }
 
@@ -89,6 +100,9 @@ func (s *authService) RegisterUser(ctx context.Context, username, email, passwor
 		return nil, err
 	}
 	user.ID = userID
+	if s.cacheEnabled {
+		resetUserSearchCacheGeneration(ctx, s.cache)
+	}
 	return user, nil
 }
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
@@ -38,9 +39,9 @@ type UpdateUserPasswordRequest struct {
 	NewPassword     string `json:"newPassword"`
 }
 
-func NewUserHandler(userRepository repositories.UserRepository, sessionRepository repositories.SessionRepository) UserHandler {
+func NewUserHandler(userRepository repositories.UserRepository, sessionRepository repositories.SessionRepository, caches ...cache.Cache) UserHandler {
 	return &userHandler{
-		userServices: services.NewUserService(userRepository, sessionRepository),
+		userServices: services.NewUserService(userRepository, sessionRepository, caches...),
 		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }

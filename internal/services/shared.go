@@ -78,6 +78,22 @@ func getKeyForReviewByID(reviewID int64) string {
 	return "review:" + cacheKeyVersion + ":id:" + strconv.FormatInt(reviewID, 10)
 }
 
+func getKeyForUserByID(userID int64) string {
+	return "user:" + cacheKeyVersion + ":id:" + strconv.FormatInt(userID, 10)
+}
+
+func getKeyForUserByUsername(username string) string {
+	return "user:" + cacheKeyVersion + ":username:" + username
+}
+
+func getKeyForUserSearchGeneration() string {
+	return "user:" + cacheKeyVersion + ":search:generation"
+}
+
+func getKeyForUserSearch(search string, limit, offset int, generation string) string {
+	return "user:" + cacheKeyVersion + ":search:query:" + url.QueryEscape(strings.ToLower(search)) + ":generation:" + generation + ":limit:" + strconv.Itoa(limit) + ":offset:" + strconv.Itoa(offset)
+}
+
 func generateMovieFromCacheResult(result string) (*domains.Movie, error) {
 	var movie domains.Movie
 	if err := json.Unmarshal([]byte(result), &movie); err != nil {
@@ -156,4 +172,36 @@ func generateCacheValueFromReview(review *domains.Review) (string, error) {
 		return "", err
 	}
 	return string(reviewJSON), nil
+}
+
+func generateUserFromCacheResult(result string) (*domains.User, error) {
+	var user domains.User
+	if err := json.Unmarshal([]byte(result), &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func generateCacheValueFromUser(user *domains.User) (string, error) {
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		return "", err
+	}
+	return string(userJSON), nil
+}
+
+func generatePublicUserListFromCacheResult(result string) ([]domains.PublicUser, error) {
+	var users []domains.PublicUser
+	if err := json.Unmarshal([]byte(result), &users); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func generateCacheValueFromPublicUserList(users []domains.PublicUser) (string, error) {
+	usersJSON, err := json.Marshal(users)
+	if err != nil {
+		return "", err
+	}
+	return string(usersJSON), nil
 }

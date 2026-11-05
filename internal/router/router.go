@@ -29,8 +29,8 @@ func NewRouter(db *database.Database, cache cache.Cache) Router {
 	return &router{
 		mux:             http.NewServeMux(),
 		cache:           cache,
-		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository),
-		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository),
+		authHandler:     handlers.NewAuthHandler(db.UserRepository, db.SessionRepository, cache),
+		userHandler:     handlers.NewUserHandler(db.UserRepository, db.SessionRepository, cache),
 		followHandler:   handlers.NewFollowHandler(db.FollowRepository, db.UserRepository, db.BlockRepository, cache),
 		blockHandler:    handlers.NewBlockHandler(db.BlockRepository, db.UserRepository),
 		reviewHandler:   handlers.NewReviewHandler(db.ReviewRepository, db.UserRepository, db.BlockRepository, cache),
@@ -48,13 +48,13 @@ func (r *router) SetupRoutes() *http.ServeMux {
 	r.mux.HandleFunc("DELETE /api/v1/auth/logout", r.auth.Authenticate(r.authHandler.LogoutUser))
 
 	// User routes
-	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser)) //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/me", r.auth.Authenticate(r.userHandler.GetCurrentUser))
 	r.mux.HandleFunc("DELETE /api/v1/users/me", r.auth.Authenticate(r.userHandler.DeleteCurrentUser))
 	r.mux.HandleFunc("PUT /api/v1/users/me", r.auth.Authenticate(r.userHandler.UpdateCurrentUser))
 	r.mux.HandleFunc("PUT /api/v1/users/me/password", r.auth.Authenticate(r.userHandler.UpdateCurrentUserPassword))
-	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername) //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/users/{user_id}", r.userHandler.GetUserByID)                 //TODO: Implement cache
-	r.mux.HandleFunc("GET /api/v1/users/search", r.userHandler.SearchUsers)                    //TODO: Implement cache
+	r.mux.HandleFunc("GET /api/v1/users/username/{username}", r.userHandler.GetUserByUsername)
+	r.mux.HandleFunc("GET /api/v1/users/{user_id}", r.userHandler.GetUserByID)
+	r.mux.HandleFunc("GET /api/v1/users/search", r.userHandler.SearchUsers)
 
 	// Follow routes
 	r.mux.HandleFunc("GET /api/v1/users/username/{username}/followers", r.followHandler.GetFollowersByUsername)

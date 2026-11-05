@@ -63,6 +63,12 @@ deleting a review resets the affected user and movie list generations and invali
 following feed, movie aggregates, and cached review. Follow and unfollow also reset the
 following-feed generation.
 
+User lookups by ID and username are cached for 1 hour, and user searches are cached per
+normalized query and pagination behind a global search generation. Updating or deleting a
+user invalidates the cached ID, the old and new username keys, and the search generation;
+registration also resets the search generation. GET requests use cache-aside reads, while
+cache failures fall back to PostgreSQL.
+
 ## Getting started
 
 Requirements: Go 1.27+ and Docker.
@@ -162,6 +168,14 @@ the review author's list generation, the movie's list generation and aggregates,
 following-feed generation, and the cached review by ID. Cache failures are logged and
 fall back to PostgreSQL, and corrupt entries are evicted. Block checks still run before
 serving a cached user review list, so blocked users cannot use the cache to bypass them.
+
+User routes use cache-aside reads under `user:v1:` keys for 1 hour. `GET /users/me` and
+`GET /users/{user_id}` share the cached user-by-ID entry, `GET /users/username/{username}`
+uses a username entry, and `GET /users/search` caches results per normalized query,
+`limit`, `offset`, and a global search generation. Updating or deleting the current user
+invalidates the ID and old/new username entries and resets the search generation;
+registration also resets it. Cache failures are logged and fall back to PostgreSQL, and
+corrupt entries are evicted.
 
 `GET /users/search` is public and searches usernames case-insensitively. `search` is
 required and surrounding whitespace is trimmed; `limit` (1-100, default 20) and `offset`
@@ -458,9 +472,10 @@ Unit tests cover services (including user search, review listing, creation, upda
 deletion, average rating, review counts, reactions, movie lookup, search, trending,
 similar and recommended movies with a faked TMDB client, paginated cache behavior
 including case-insensitive search cache keys, follower/following cache hits, writes, and
-invalidation, and review list, review-by-ID, aggregate cache behavior, and review cache
-invalidation), handlers (including user search, movie status and page mapping, and JSON
-body limits), middleware, and repository helpers (including LIKE-pattern escaping).
+invalidation, review list, review-by-ID, aggregate cache behavior, and review cache
+invalidation, and user lookup/search cache hits, writes, TTLs, and invalidation), handlers
+(including user search, movie status and page mapping, and JSON body limits), middleware,
+and repository helpers (including LIKE-pattern escaping).
 They use fakes from
 `internal/testutil`. Repository integration tests are not included because they require
 a running PostgreSQL instance.
@@ -489,6 +504,10 @@ a running PostgreSQL instance.
   `review:v1:` keys for 1 hour. User and movie list caches use per-scope generations, the
   following feed uses a global generation, and review mutations invalidate the affected
   generations plus the movie aggregates and cached review.
+- User lookups by ID and username and user search results are cached under `user:v1:` keys
+  for 1 hour. Search results include a global generation plus pagination; user updates and
+  deletions invalidate the user entries and reset that generation, and registration also
+  resets it.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
 - Tables for movies, comments, and reactions exist; reactions are implemented for

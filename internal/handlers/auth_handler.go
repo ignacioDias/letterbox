@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"letterbox/internal/cache"
 	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
@@ -33,9 +34,9 @@ type LoginUserRequest struct {
 	Password        string `json:"password"`
 }
 
-func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository) AuthHandler {
+func NewAuthHandler(userRepo repositories.UserRepository, sessionRepo repositories.SessionRepository, caches ...cache.Cache) AuthHandler {
 	return &authHandler{
-		authServices: services.NewAuthService(userRepo, sessionRepo),
+		authServices: services.NewAuthService(userRepo, sessionRepo, caches...),
 		secureCookie: os.Getenv("APP_ENV") == "production",
 	}
 }

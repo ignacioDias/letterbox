@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"letterbox/internal/testutil"
@@ -433,4 +434,272 @@ func TestUserPassThroughOperations(t *testing.T) {
 			t.Fatalf("DeleteUserByID() error = %v; want %v", err, genericErr)
 		}
 	})
+}
+
+func TestGetUserByIDCacheHit(t *testing.T) {
+	user := &domains.User{ID: 7, Username: "ada", Email: "ada@example.com"}
+	value, err := generateCacheValueFromUser(user)
+	if err != nil {
+		t.Fatalf("encode cached user: %v", err)
+	}
+	repoCalled := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(_ context.Context, key string) (string, error) {
+			if key != getKeyForUserByID(7) {
+				t.Fatalf("cache.Get(%q); want %q", key, getKeyForUserByID(7))
+			}
+			return value, nil
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+			repoCalled = true
+			return nil, errors.New("repository should not be called")
+		},
+	}
+	svc := NewUserService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	got, err := svc.GetUserByID(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if repoCalled {
+		t.Fatal("GetUserByID called repository on cache hit")
+	}
+	if got.Username != "ada" {
+		t.Fatalf("GetUserByID returned %+v", got)
+	}
+}
+
+func TestGetUserByUsernameCacheMissCachesResult(t *testing.T) {
+	user := &domains.User{ID: 7, Username: "ada"}
+	wantKey := getKeyForUserByUsername("ada")
+	var setKey string
+	var setTTL int
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+			setKey = key
+			setTTL = expiringTimeInSeconds
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserByUsernameFunc: func(_ context.Context, username string) (*domains.User, error) {
+			if username != "ada" {
+				t.Fatalf("GetUserByUsername(%q); want ada", username)
+			}
+			return user, nil
+		},
+	}
+	svc := NewUserService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	got, err := svc.GetUserByUsername(context.Background(), "ada")
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	if got.Username != "ada" {
+		t.Fatalf("GetUserByUsername returned %+v", got)
+	}
+	if setKey != wantKey {
+		t.Fatalf("cache.Set key = %q; want %q", setKey, wantKey)
+	}
+	if setTTL != userCacheTTLSeconds {
+		t.Fatalf("cache.Set TTL = %d; want %d", setTTL, userCacheTTLSeconds)
+	}
+}
+
+func TestSearchUsersCacheHit(t *testing.T) {
+	users := []domains.PublicUser{{ID: 7, Username: "ada"}}
+	value, err := generateCacheValueFromPublicUserList(users)
+	if err != nil {
+		t.Fatalf("encode cached users: %v", err)
+	}
+	generation := "generation-1"
+	generationKey := getKeyForUserSearchGeneration()
+	listKey := getKeyForUserSearch("ada", 20, 5, generation)
+	repoCalled := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(_ context.Context, key string) (string, error) {
+			switch key {
+			case generationKey:
+				return generation, nil
+			case listKey:
+				return value, nil
+			default:
+				return "", cache.ErrKeyNotFound
+			}
+		},
+		SetFunc: func(context.Context, string, string, int) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		SearchUsersFunc: func(context.Context, string, int, int) ([]domains.PublicUser, error) {
+			repoCalled = true
+			return nil, errors.New("repository should not be called")
+		},
+	}
+	svc := NewUserService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	got, err := svc.SearchUsers(context.Background(), "ada", 20, 5)
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	if repoCalled {
+		t.Fatal("SearchUsers called repository on cache hit")
+	}
+	if len(got) != 1 || got[0].Username != "ada" {
+		t.Fatalf("SearchUsers returned %+v", got)
+	}
+}
+
+func TestUpdateUserByIDInvalidatesCache(t *testing.T) {
+	var deletedKeys []string
+	searchGenerationReset := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, expiringTimeInSeconds int) error {
+			if expiringTimeInSeconds != userCacheTTLSeconds {
+				t.Fatalf("cache.Set TTL = %d; want %d", expiringTimeInSeconds, userCacheTTLSeconds)
+			}
+			if key == getKeyForUserSearchGeneration() {
+				searchGenerationReset = true
+			}
+			return nil
+		},
+		DeleteFunc: func(_ context.Context, keys []string) (int64, error) {
+			deletedKeys = append(deletedKeys, keys...)
+			return int64(len(keys)), nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+			return &domains.User{ID: 7, Username: "ada", Email: "ada@example.com"}, nil
+		},
+		UpdateUserFunc: func(context.Context, *domains.User) error {
+			return nil
+		},
+	}
+	svc := NewUserService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	if err := svc.UpdateUserByID(context.Background(), 7, "ada_l", "", "", ""); err != nil {
+		t.Fatalf("UpdateUserByID: %v", err)
+	}
+
+	wantDeleted := map[string]bool{
+		getKeyForUserByID(7):             false,
+		getKeyForUserByUsername("ada"):   false,
+		getKeyForUserByUsername("ada_l"): false,
+	}
+	for _, key := range deletedKeys {
+		if _, ok := wantDeleted[key]; ok {
+			wantDeleted[key] = true
+		}
+	}
+	for key, found := range wantDeleted {
+		if !found {
+			t.Fatalf("cache.Delete did not include %q (deleted %v)", key, deletedKeys)
+		}
+	}
+	if !searchGenerationReset {
+		t.Fatal("search cache generation was not reset")
+	}
+}
+
+func TestDeleteUserByIDInvalidatesCache(t *testing.T) {
+	var deletedKeys []string
+	searchGenerationReset := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, _ int) error {
+			if key == getKeyForUserSearchGeneration() {
+				searchGenerationReset = true
+			}
+			return nil
+		},
+		DeleteFunc: func(_ context.Context, keys []string) (int64, error) {
+			deletedKeys = append(deletedKeys, keys...)
+			return int64(len(keys)), nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		GetUserByIDFunc: func(context.Context, int64) (*domains.User, error) {
+			return &domains.User{ID: 7, Username: "ada"}, nil
+		},
+		DeleteUserByIDFunc: func(context.Context, int64) error {
+			return nil
+		},
+	}
+	svc := NewUserService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	if err := svc.DeleteUserByID(context.Background(), 7); err != nil {
+		t.Fatalf("DeleteUserByID: %v", err)
+	}
+
+	foundIDKey := false
+	foundUsernameKey := false
+	for _, key := range deletedKeys {
+		if key == getKeyForUserByID(7) {
+			foundIDKey = true
+		}
+		if key == getKeyForUserByUsername("ada") {
+			foundUsernameKey = true
+		}
+	}
+	if !foundIDKey || !foundUsernameKey {
+		t.Fatalf("cache.Delete keys = %v; want id and username keys", deletedKeys)
+	}
+	if !searchGenerationReset {
+		t.Fatal("search cache generation was not reset")
+	}
+}
+
+func TestRegisterUserResetsSearchCacheGeneration(t *testing.T) {
+	searchGenerationReset := false
+	fakeCache := &testutil.FakeCache{
+		GetFunc: func(context.Context, string) (string, error) {
+			return "", cache.ErrKeyNotFound
+		},
+		SetFunc: func(_ context.Context, key string, _ string, _ int) error {
+			if key == getKeyForUserSearchGeneration() {
+				searchGenerationReset = true
+			}
+			return nil
+		},
+		DeleteFunc: func(context.Context, []string) (int64, error) {
+			return 0, nil
+		},
+	}
+	userRepo := &testutil.FakeUserRepository{
+		CreateUserFunc: func(_ context.Context, user *domains.User) (int64, error) {
+			return 7, nil
+		},
+	}
+	svc := NewAuthService(userRepo, &testutil.FakeSessionRepository{}, fakeCache)
+
+	if _, err := svc.RegisterUser(context.Background(), "ada", "ada@example.com", "secret123", "", "AR"); err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+	if !searchGenerationReset {
+		t.Fatal("search cache generation was not reset")
+	}
 }
