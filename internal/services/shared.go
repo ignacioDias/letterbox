@@ -1,11 +1,18 @@
 package services
 
 import (
+	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"letterbox/internal/domains"
+	"letterbox/internal/repositories"
+	mathrand "math/rand"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var cacheKeyVersion = "v1"
@@ -204,4 +211,47 @@ func generateCacheValueFromPublicUserList(users []domains.PublicUser) (string, e
 		return "", err
 	}
 	return string(usersJSON), nil
+}
+
+func generateSessionID() string {
+	return rand.Text()
+}
+
+// generateUnusablePasswordHash gives OAuth-only accounts a valid bcrypt hash
+// that no password can match, instead of storing an empty password_hash.
+func generateUnusablePasswordHash() (string, error) {
+	return hashPassword(generateSessionID())
+}
+
+func createSessionForUser(ctx context.Context, sessionRepo repositories.SessionRepository, userID int64) (*domains.Session, error) {
+	createdAt := time.Now()
+	session := &domains.Session{
+		ID:        generateSessionID(),
+		UserID:    userID,
+		CreatedAt: createdAt,
+		ExpiresAt: createdAt.Add(time.Hour),
+	}
+	if err := sessionRepo.CreateSession(ctx, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+var invalidUsernameChars = regexp.MustCompile(`[^a-zA-Z0-9_]+`)
+
+func generateUsernameFromEmail(email string) string {
+	username := email
+	if atIndex := strings.IndexByte(email, '@'); atIndex != -1 {
+		username = email[:atIndex]
+	}
+	// Keep the generated name compatible with validateUsername: only letters,
+	// digits and underscores, with room for the 4-digit suffix (max 20 chars).
+	username = strings.Trim(invalidUsernameChars.ReplaceAllString(username, "_"), "_")
+	if username == "" {
+		username = "user"
+	}
+	if len(username) > 16 {
+		username = username[:16]
+	}
+	return fmt.Sprintf("%s%04d", username, mathrand.Intn(10000))
 }

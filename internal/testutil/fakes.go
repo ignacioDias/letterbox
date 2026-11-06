@@ -253,3 +253,28 @@ func (f *FakeMovieRepository) SaveMovie(ctx context.Context, movie *domains.Movi
 func (f *FakeMovieRepository) GetMovieByID(ctx context.Context, movieID int32) (*domains.Movie, error) {
 	return f.GetMovieByIDFunc(ctx, movieID)
 }
+
+type FakeUserIdentityRepository struct {
+	repositories.UserIdentityRepository
+
+	GetByProviderAndProviderUserIDFunc func(ctx context.Context, provider, providerUserID string) (*domains.UserIdentity, error)
+	GetByUserIDAndProviderFunc         func(ctx context.Context, userID int64, provider string) (*domains.UserIdentity, error)
+	CreateIdentityFunc                 func(ctx context.Context, identity *domains.UserIdentity) (*domains.UserIdentity, error)
+	CreateUserWithIdentityFunc         func(ctx context.Context, user *domains.User, identity *domains.UserIdentity) error
+}
+
+func (f *FakeUserIdentityRepository) GetByProviderAndProviderUserID(ctx context.Context, provider, providerUserID string) (*domains.UserIdentity, error) {
+	return f.GetByProviderAndProviderUserIDFunc(ctx, provider, providerUserID)
+}
+
+func (f *FakeUserIdentityRepository) GetByUserIDAndProvider(ctx context.Context, userID int64, provider string) (*domains.UserIdentity, error) {
+	return f.GetByUserIDAndProviderFunc(ctx, userID, provider)
+}
+
+func (f *FakeUserIdentityRepository) CreateIdentity(ctx context.Context, identity *domains.UserIdentity) (*domains.UserIdentity, error) {
+	return f.CreateIdentityFunc(ctx, identity)
+}
+
+func (f *FakeUserIdentityRepository) CreateUserWithIdentity(ctx context.Context, user *domains.User, identity *domains.UserIdentity) error {
+	return f.CreateUserWithIdentityFunc(ctx, user, identity)
+}

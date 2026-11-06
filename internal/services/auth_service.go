@@ -2,13 +2,11 @@ package services
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"letterbox/internal/cache"
 	"letterbox/internal/domains"
 	"letterbox/internal/repositories"
 	"strings"
-	"time"
 )
 
 const dummyPasswordHash = "$2a$12$t2pJYP1xjBB5tIUDSNK0YOLqMhEYw8jg7Zx9VUWJVgzjno.f8VEHu"
@@ -47,21 +45,7 @@ func NewAuthService(userRepo repositories.UserRepository, sessionRepo repositori
 }
 
 func (s *authService) CreateSession(ctx context.Context, userID int64) (*domains.Session, error) {
-	createdAt := time.Now()
-	session := &domains.Session{
-		ID:        generateSessionID(),
-		UserID:    userID,
-		CreatedAt: createdAt,
-		ExpiresAt: createdAt.Add(time.Hour),
-	}
-	if err := s.sessionRepository.CreateSession(ctx, session); err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
-func generateSessionID() string {
-	return rand.Text()
+	return createSessionForUser(ctx, s.sessionRepository, userID)
 }
 
 func (s *authService) DeleteSession(ctx context.Context, sessionID string) error {

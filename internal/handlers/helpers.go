@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"letterbox/internal/domains"
 	"letterbox/internal/middleware"
 	"log"
 	"net/http"
@@ -102,4 +103,17 @@ func getInt32PathValue(r *http.Request, name string) (int32, error) {
 
 func getInt64PathValue(r *http.Request, name string) (int64, error) {
 	return getPathInt(r, name, 64)
+}
+
+func generateSession(session *domains.Session, w http.ResponseWriter, secureCookie bool) {
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     middleware.SessionCookieName,
+		Value:    session.ID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secureCookie,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  session.ExpiresAt,
+	})
 }

@@ -36,9 +36,12 @@ func NewUserRepository(db *sqlx.DB) UserRepository {
 }
 
 func (r *userRepository) CreateUser(ctx context.Context, user *domains.User) (int64, error) {
+	return insertUser(ctx, r.db, user)
+}
+
+func insertUser(ctx context.Context, q sqlx.QueryerContext, user *domains.User) (int64, error) {
 	query := `INSERT INTO users (username, email, password_hash, profile_picture_url, country) VALUES ($1, $2, $3, $4, $5) RETURNING id`
-	err := r.db.QueryRowContext(ctx, query, user.Username, user.Email, user.PasswordHash, user.ProfilePictureURL, user.Country).Scan(&user.ID)
-	if err != nil {
+	if err := sqlx.GetContext(ctx, q, &user.ID, query, user.Username, user.Email, user.PasswordHash, user.ProfilePictureURL, user.Country); err != nil {
 		return 0, mapUniqueViolation(err)
 	}
 	return user.ID, nil

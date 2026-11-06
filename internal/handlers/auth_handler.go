@@ -3,7 +3,6 @@ package handlers
 import (
 	"errors"
 	"letterbox/internal/cache"
-	"letterbox/internal/middleware"
 	"letterbox/internal/repositories"
 	"letterbox/internal/services"
 	"net/http"
@@ -81,16 +80,7 @@ func (a *authHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error creating the session", http.StatusInternalServerError)
 		return
 	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookieName,
-		Value:    session.ID,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   a.secureCookie,
-		SameSite: http.SameSiteStrictMode,
-		Expires:  session.ExpiresAt,
-	})
+	generateSession(session, w, a.secureCookie)
 	writeJSON(w, http.StatusOK, user)
 }
 

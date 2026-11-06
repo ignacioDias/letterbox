@@ -10,9 +10,11 @@ require (
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/valkey-io/valkey-glide/go/v2 v2.5.3
 	golang.org/x/crypto v0.58.0
+	golang.org/x/oauth2 v0.37.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

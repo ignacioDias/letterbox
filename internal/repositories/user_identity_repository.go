@@ -13,6 +13,7 @@ type UserIdentityRepository interface {
 	GetByProviderAndProviderUserID(ctx context.Context, provider, providerUserID string) (*domains.UserIdentity, error)
 	GetByUserIDAndProvider(ctx context.Context, userID int64, provider string) (*domains.UserIdentity, error)
 	CreateIdentity(ctx context.Context, identity *domains.UserIdentity) (*domains.UserIdentity, error)
+	CreateUserWithIdentity(ctx context.Context, user *domains.User, identity *domains.UserIdentity) error
 }
 
 type userIdentityRepository struct {
@@ -44,19 +45,45 @@ func (r *userIdentityRepository) GetByUserIDAndProvider(ctx context.Context, use
 }
 
 func (r *userIdentityRepository) CreateIdentity(ctx context.Context, identity *domains.UserIdentity) (*domains.UserIdentity, error) {
+	if err := insertIdentity(ctx, r.db, identity); err != nil {
+		return nil, err
+	}
+	return identity, nil
+}
+
+// CreateUserWithIdentity creates the user and its external identity atomically so
+// a failed identity insert never leaves an orphaned account behind.
+func (r *userIdentityRepository) CreateUserWithIdentity(ctx context.Context, user *domains.User, identity *domains.UserIdentity) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := insertUser(ctx, tx, user); err != nil {
+		return err
+	}
+	identity.UserID = user.ID
+	if err := insertIdentity(ctx, tx, identity); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func insertIdentity(ctx context.Context, q sqlx.QueryerContext, identity *domains.UserIdentity) error {
 	query := `
 		INSERT INTO user_identities (user_id, provider, provider_user_id, email)
 		VALUES ($1, $2, $3, NULLIF($4, '')::citext)
 		RETURNING id, created_at
 	`
-	err := r.db.QueryRowContext(ctx, query, identity.UserID, identity.Provider, identity.ProviderUserID, identity.Email).Scan(&identity.ID, &identity.CreatedAt)
+	err := q.QueryRowxContext(ctx, query, identity.UserID, identity.Provider, identity.ProviderUserID, identity.Email).Scan(&identity.ID, &identity.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return nil, ErrUserIdentityExists
+			return ErrUserIdentityExists
 		}
-		return nil, err
+		return err
 	}
-	return identity, nil
+	return nil
 }
 
 func (r *userIdentityRepository) getIdentity(ctx context.Context, query string, args ...any) (*domains.UserIdentity, error) {
