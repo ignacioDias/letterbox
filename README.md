@@ -1,9 +1,10 @@
 # Letterbox
 
 A REST API backend for a social movie-rating platform. Users can register, sign in
-with cookie-based sessions, manage their profile, search other users by username,
-follow other users, block or unblock them, and create, update, delete, and list reviews. Reviews can be listed per
-user, per movie, and as a feed of the users they follow. Users can also like or dislike reviews.
+with cookie-based sessions or Google OAuth 2.0, manage their profile, search other users
+by username, follow other users, block or unblock them, and create, update, delete, and
+list reviews. Reviews can be listed per user, per movie, and as a feed of the users they
+follow. Users can also like or dislike reviews.
 Movies can be looked up by TMDB id, searched, listed from TMDB's daily trending feed, or
 expanded with similar titles and recommendations, with results cached in Valkey and
 PostgreSQL. The data model is prepared for comments; comment endpoints are not
@@ -19,6 +20,7 @@ There is a [vibe coded frontend for this project](https://github.com/ignacioDias
 - **sqlx** + **pgx** for database access
 - **golang-tmdb** for movie metadata, cached in Valkey and PostgreSQL
 - **bcrypt** for password hashing
+- **golang.org/x/oauth2** for Google sign-in with PKCE
 - **godotenv** for local environment loading
 
 ## Project structure
@@ -28,7 +30,7 @@ cmd/letterbox/          Application entry point
 internal/
   cache/                Valkey client and cache interface
   database/             Connection wiring, embedded SQL migrations
-  domains/              Domain models (User, Session, Review, Reaction, Movie, PublicUser)
+  domains/              Domain models (User, UserIdentity, Session, Review, Reaction, Movie, PublicUser)
   handlers/             HTTP handlers
   middleware/           Authentication and rate limiting
   repositories/         SQL queries
@@ -39,8 +41,8 @@ internal/
 ```
 
 Requests flow through `router -> handler -> service -> repository`. Each domain has its
-own repository (`UserRepository`, `SessionRepository`, `FollowRepository`,
-`BlockRepository`, `ReviewRepository`, `ReactionRepository`, `MovieRepository`) so SQL
+own repository (`UserRepository`, `UserIdentityRepository`, `SessionRepository`,
+`FollowRepository`, `BlockRepository`, `ReviewRepository`, `ReactionRepository`, `MovieRepository`) so SQL
 stays out of handlers and services. `MovieRepository` reads and writes a local `movies`
 table keyed by TMDB id. Movie lookups are served from Valkey first, then the `movies`
 table, and on a miss `MovieService` fetches the movie from TMDB and stores it in both
@@ -107,6 +109,9 @@ go run ./cmd/letterbox
 | `POSTGRES_DB` | `letterbox` | Postgres database name |
 | `POSTGRES_PORT` | `5433` | Host port mapped to the container |
 | `TMDB_API_KEY` | none | TMDB API key used when a movie is missing from the local cache |
+| `CLIENT_ID_GOOGLE_OAUTH` | none | Google OAuth 2.0 client ID |
+| `CLIENT_SECRET_GOOGLE_OAUTH` | none | Google OAuth 2.0 client secret |
+| `GOOGLE_OAUTH_REDIRECT_URL` | `http://localhost:$PORT/api/v1/auth/oauth2/google/callback` | Public callback URL registered in Google Cloud Console |
 
 ## API
 
@@ -117,6 +122,8 @@ Base path: `/api/v1`
 | `POST` | `/auth/register` | No | Implemented |
 | `POST` | `/auth/login` | No | Implemented |
 | `DELETE` | `/auth/logout` | Yes | Implemented |
+| `GET` | `/auth/oauth2/google` | No | Implemented |
+| `GET` | `/auth/oauth2/google/callback` | No | Implemented |
 | `GET` | `/users/me` | Yes | Implemented |
 | `PUT` | `/users/me` | Yes | Implemented |
 | `PUT` | `/users/me/password` | Yes | Implemented |
@@ -456,6 +463,28 @@ background cleanup job. Logout deletes only the current session and clears the c
 deleting an account removes all of the user's sessions and data via cascading foreign keys.
 Changing the password requires the current password and invalidates every other session.
 
+### Google sign-in
+
+`GET /auth/oauth2/google` starts the Google OAuth 2.0 authorization code flow. It sets
+two short-lived (10 minute), `HttpOnly`, `SameSite=Lax` cookies — `oauthstate` for CSRF
+and `oauthcodeverifier` for PKCE — and redirects to Google. Both are `Secure` when
+`APP_ENV=production`.
+
+`GET /auth/oauth2/google/callback` validates the state in constant time, redeems the
+authorization code with the PKCE verifier, fetches the profile from Google's OIDC
+userinfo endpoint, and requires a verified email. It then signs in the linked identity
+from `user_identities`, links the Google identity to an existing account with the same
+verified email, or creates a new account. New accounts get a sanitized username (retried
+up to five times on collisions) and a random unusable password hash; the user and
+identity rows are written in one transaction.
+
+On success the callback creates the same 1-hour session cookie as password login and
+returns the user. It returns `400` for a missing or mismatched state, missing code,
+denied consent, or unverified email, `409` on an identity/email/username conflict, and
+`500` for Google or database failures. Configure `CLIENT_ID_GOOGLE_OAUTH`,
+`CLIENT_SECRET_GOOGLE_OAUTH`, and register `GOOGLE_OAUTH_REDIRECT_URL` as an authorized
+redirect URI in Google Cloud Console.
+
 ## Rate limiting
 
 Every request is limited to 100 requests per minute per client IP. Exceeding the limit
@@ -473,7 +502,9 @@ deletion, average rating, review counts, reactions, movie lookup, search, trendi
 similar and recommended movies with a faked TMDB client, paginated cache behavior
 including case-insensitive search cache keys, follower/following cache hits, writes, and
 invalidation, review list, review-by-ID, aggregate cache behavior, and review cache
-invalidation, and user lookup/search cache hits, writes, TTLs, and invalidation), handlers
+invalidation, user lookup/search cache hits, writes, TTLs, and invalidation, and Google
+OAuth account creation, email linking, state/PKCE validation, unverified-email rejection,
+and username-collision retries), handlers
 (including user search, movie status and page mapping, and JSON body limits), middleware,
 and repository helpers (including LIKE-pattern escaping).
 They use fakes from
@@ -510,6 +541,13 @@ a running PostgreSQL instance.
   resets it.
 - Creating a review requires the movie to already exist in the local `movies` cache;
   call `GET /movies/{movie_id}` first to populate it.
+- Google OAuth 2.0 sign-in is implemented at `/auth/oauth2/google` with PKCE, state
+  cookies, verified-email linking, and atomic user/identity creation. `user_identities`
+  is unique per `(provider, provider_user_id)` and per `(user_id, provider)`. OAuth-only
+  accounts have a random unusable password hash, so password login always fails for them.
+- The Google redirect URL defaults to `http://localhost:$PORT/api/v1/auth/oauth2/google/callback`;
+  set `GOOGLE_OAUTH_REDIRECT_URL` explicitly outside local development and register the
+  same URI in Google Cloud Console.
 - Tables for movies, comments, and reactions exist; reactions are implemented for
   reviews only, and comments have no code.
 - Blocks prevent follows, remove existing follow relationships, and hide reviews in both
